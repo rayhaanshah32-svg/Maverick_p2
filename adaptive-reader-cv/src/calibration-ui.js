@@ -1,13 +1,14 @@
 const CalibrationUI = (function () {
 
-    const DWELL_DURATION_MS = 1000;
-    const SACCADE_DISCARD_MS = 300;
-    const COLLECT_DURATION_MS = DWELL_DURATION_MS - SACCADE_DISCARD_MS;
+    const FULL_DWELL_MS = 1000;
+    const FULL_SACCADE_MS = 250;
 
-    const VALIDATION_POINTS = 5;
-    const ACCURACY_GOOD_THRESHOLD_PX = 100;
+    const QUICK_DWELL_MS = 750;
+    const QUICK_SACCADE_MS = 200;
 
-    const CALIBRATION_POINTS = [
+    const ACCURACY_THRESHOLD_PX = 100;
+
+    const NINE_POINTS = [
         { xPercent: 0.1,  yPercent: 0.1  },
         { xPercent: 0.5,  yPercent: 0.1  },
         { xPercent: 0.9,  yPercent: 0.1  },
@@ -19,14 +20,34 @@ const CalibrationUI = (function () {
         { xPercent: 0.9,  yPercent: 0.9  }
     ];
 
-    const VALIDATION_POINT_INDICES = [0, 2, 4, 6, 8];
+    const FIVE_POINTS = [
+        { xPercent: 0.1,  yPercent: 0.1  },
+        { xPercent: 0.9,  yPercent: 0.1  },
+        { xPercent: 0.5,  yPercent: 0.5  },
+        { xPercent: 0.1,  yPercent: 0.9  },
+        { xPercent: 0.9,  yPercent: 0.9  }
+    ];
 
     let overlayElement = null;
-    let dotElement = null;
+    let dotContainer = null;
+    let dotPulseRing = null;
+    let dotCore = null;
+    let dotProgressRing = null;
     let instructionElement = null;
-    let progressElement = null;
+    let statusBannerElement = null;
+    let qualityBadgeElement = null;
+
     let isCalibrating = false;
-    let collectedValidationErrors = [];
+    let currentMode = "full";
+
+    let inMemoryProfile = {
+        calibrated: false,
+        timestamp: null,
+        mode: "none",
+        overallScore: 0,
+        averageErrorPx: 0,
+        pointResults: []
+    };
 
     function createOverlay() {
         overlayElement = document.createElement("div");
@@ -36,262 +57,354 @@ const CalibrationUI = (function () {
         overlayElement.style.left = "0";
         overlayElement.style.width = "100vw";
         overlayElement.style.height = "100vh";
-        overlayElement.style.backgroundColor = "rgba(10, 10, 20, 0.97)";
+        overlayElement.style.backgroundColor = "rgba(7, 8, 16, 0.96)";
+        overlayElement.style.backdropFilter = "blur(12px)";
         overlayElement.style.zIndex = "99999";
         overlayElement.style.display = "flex";
         overlayElement.style.flexDirection = "column";
         overlayElement.style.alignItems = "center";
-        overlayElement.style.justifyContent = "center";
+        overlayElement.style.justifyContent = "space-between";
+        overlayElement.style.padding = "32px 20px";
+        overlayElement.style.boxSizing = "border-box";
         overlayElement.style.fontFamily = "'Inter', 'Segoe UI', sans-serif";
+
+        const topHeader = document.createElement("div");
+        topHeader.style.display = "flex";
+        topHeader.style.flexDirection = "column";
+        topHeader.style.alignItems = "center";
+        topHeader.style.gap = "8px";
 
         instructionElement = document.createElement("div");
         instructionElement.id = "calibration-instruction";
-        instructionElement.style.position = "absolute";
-        instructionElement.style.top = "20px";
-        instructionElement.style.left = "50%";
-        instructionElement.style.transform = "translateX(-50%)";
-        instructionElement.style.color = "#e0e0ff";
-        instructionElement.style.fontSize = "18px";
+        instructionElement.style.color = "#f0f2ff";
+        instructionElement.style.fontSize = "22px";
+        instructionElement.style.fontWeight = "600";
+        instructionElement.style.letterSpacing = "0.02em";
         instructionElement.style.textAlign = "center";
-        instructionElement.style.letterSpacing = "0.04em";
-        instructionElement.style.userSelect = "none";
+        topHeader.appendChild(instructionElement);
 
-        progressElement = document.createElement("div");
-        progressElement.id = "calibration-progress";
-        progressElement.style.position = "absolute";
-        progressElement.style.bottom = "24px";
-        progressElement.style.left = "50%";
-        progressElement.style.transform = "translateX(-50%)";
-        progressElement.style.color = "#888aaa";
-        progressElement.style.fontSize = "14px";
-        progressElement.style.userSelect = "none";
+        statusBannerElement = document.createElement("div");
+        statusBannerElement.id = "calibration-status-banner";
+        statusBannerElement.style.color = "#9fa3c0";
+        statusBannerElement.style.fontSize = "14px";
+        statusBannerElement.style.textAlign = "center";
+        topHeader.appendChild(statusBannerElement);
 
-        dotElement = document.createElement("div");
-        dotElement.id = "calibration-dot";
-        dotElement.style.position = "absolute";
-        dotElement.style.width = "28px";
-        dotElement.style.height = "28px";
-        dotElement.style.borderRadius = "50%";
-        dotElement.style.backgroundColor = "#5c6bc0";
-        dotElement.style.border = "3px solid #9fa8da";
-        dotElement.style.boxShadow = "0 0 18px rgba(92, 107, 192, 0.8)";
-        dotElement.style.transition = "transform 0.18s ease, background-color 0.2s ease, box-shadow 0.2s ease";
-        dotElement.style.transform = "translate(-50%, -50%) scale(1)";
-        dotElement.style.display = "none";
+        overlayElement.appendChild(topHeader);
 
-        overlayElement.appendChild(instructionElement);
-        overlayElement.appendChild(progressElement);
-        overlayElement.appendChild(dotElement);
+        dotContainer = document.createElement("div");
+        dotContainer.id = "calibration-dot-container";
+        dotContainer.style.position = "absolute";
+        dotContainer.style.width = "80px";
+        dotContainer.style.height = "80px";
+        dotContainer.style.transform = "translate(-50%, -50%)";
+        dotContainer.style.display = "none";
+        dotContainer.style.pointerEvents = "none";
+
+        dotPulseRing = document.createElement("div");
+        dotPulseRing.id = "calibration-pulse-ring";
+        dotPulseRing.style.position = "absolute";
+        dotPulseRing.style.inset = "0";
+        dotPulseRing.style.borderRadius = "50%";
+        dotPulseRing.style.border = "2px solid rgba(92, 107, 192, 0.6)";
+        dotPulseRing.style.boxShadow = "0 0 20px rgba(92, 107, 192, 0.4)";
+        dotPulseRing.style.animation = "calib-pulse 1.4s ease-out infinite";
+        dotContainer.appendChild(dotPulseRing);
+
+        dotCore = document.createElement("div");
+        dotCore.id = "calibration-dot-core";
+        dotCore.style.position = "absolute";
+        dotCore.style.top = "50%";
+        dotCore.style.left = "50%";
+        dotCore.style.width = "26px";
+        dotCore.style.height = "26px";
+        dotCore.style.borderRadius = "50%";
+        dotCore.style.transform = "translate(-50%, -50%) scale(1)";
+        dotCore.style.backgroundColor = "#5c6bc0";
+        dotCore.style.border = "3px solid #e0e7ff";
+        dotCore.style.boxShadow = "0 0 16px rgba(92, 107, 192, 0.9)";
+        dotCore.style.transition = "transform 0.15s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease";
+        dotContainer.appendChild(dotCore);
+
+        overlayElement.appendChild(dotContainer);
+
+        const bottomFooter = document.createElement("div");
+        bottomFooter.style.display = "flex";
+        bottomFooter.style.alignItems = "center";
+        bottomFooter.style.gap = "16px";
+
+        qualityBadgeElement = document.createElement("div");
+        qualityBadgeElement.id = "calibration-quality-badge";
+        qualityBadgeElement.style.padding = "8px 18px";
+        qualityBadgeElement.style.borderRadius = "20px";
+        qualityBadgeElement.style.backgroundColor = "rgba(26, 29, 53, 0.85)";
+        qualityBadgeElement.style.border = "1px solid rgba(92, 107, 192, 0.3)";
+        qualityBadgeElement.style.color = "#c7d2fe";
+        qualityBadgeElement.style.fontSize = "13px";
+        qualityBadgeElement.style.fontWeight = "500";
+        bottomFooter.appendChild(qualityBadgeElement);
+
+        overlayElement.appendChild(bottomFooter);
+
+        if (!document.getElementById("calibration-animations-style")) {
+            const styleTag = document.createElement("style");
+            styleTag.id = "calibration-animations-style";
+            styleTag.textContent = `
+                @keyframes calib-pulse {
+                    0% { transform: scale(0.6); opacity: 1; }
+                    100% { transform: scale(1.6); opacity: 0; }
+                }
+                @keyframes calib-capture-spin {
+                    0% { transform: translate(-50%, -50%) scale(1); }
+                    50% { transform: translate(-50%, -50%) scale(0.6); }
+                    100% { transform: translate(-50%, -50%) scale(1); }
+                }
+            `;
+            document.head.appendChild(styleTag);
+        }
+
         document.body.appendChild(overlayElement);
     }
 
-    function moveDotToPoint(targetX, targetY) {
-        dotElement.style.display = "block";
-        dotElement.style.left = targetX + "px";
-        dotElement.style.top = targetY + "px";
-        dotElement.style.backgroundColor = "#5c6bc0";
-        dotElement.style.boxShadow = "0 0 18px rgba(92, 107, 192, 0.8)";
-        dotElement.style.transform = "translate(-50%, -50%) scale(1)";
+    function moveDot(pixelX, pixelY) {
+        dotContainer.style.display = "block";
+        dotContainer.style.left = pixelX + "px";
+        dotContainer.style.top = pixelY + "px";
+
+        dotCore.style.backgroundColor = "#5c6bc0";
+        dotCore.style.borderColor = "#e0e7ff";
+        dotCore.style.boxShadow = "0 0 16px rgba(92, 107, 192, 0.9)";
+        dotCore.style.transform = "translate(-50%, -50%) scale(1)";
+        dotPulseRing.style.borderColor = "rgba(92, 107, 192, 0.6)";
+        dotPulseRing.style.display = "block";
     }
 
-    function animateDotCollection(targetX, targetY, durationMs, onComplete) {
+    function animateCapture(durationMs, onComplete) {
         let startTime = null;
-        const totalDuration = durationMs;
 
-        function animationStep(currentTime) {
+        dotPulseRing.style.borderColor = "rgba(16, 185, 129, 0.8)";
+        dotPulseRing.style.boxShadow = "0 0 24px rgba(16, 185, 129, 0.6)";
+
+        function step(timestamp) {
             if (!startTime) {
-                startTime = currentTime;
+                startTime = timestamp;
             }
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / totalDuration, 1);
+            const elapsed = timestamp - startTime;
+            const progress = Math.min(elapsed / durationMs, 1);
 
-            const scale = 1 + progress * 0.5;
-            const greenAmount = Math.round(progress * 130);
-            const redAmount = 92 + Math.round(progress * 20);
-            const blueAmount = 192 - Math.round(progress * 80);
+            const scale = 1.2 - (progress * 0.5);
 
-            dotElement.style.backgroundColor =
-                "rgb(" + redAmount + ", " + (107 + greenAmount) + ", " + blueAmount + ")";
-            dotElement.style.transform =
-                "translate(-50%, -50%) scale(" + scale + ")";
-            dotElement.style.boxShadow =
-                "0 0 " + (18 + Math.round(progress * 20)) + "px rgba(92, 200, 100, " + (0.6 + progress * 0.4) + ")";
+            const red = Math.round(92 + (16 - 92) * progress);
+            const green = Math.round(107 + (185 - 107) * progress);
+            const blue = Math.round(192 + (129 - 192) * progress);
+
+            dotCore.style.backgroundColor = "rgb(" + red + ", " + green + ", " + blue + ")";
+            dotCore.style.borderColor = "#a7f3d0";
+            dotCore.style.transform = "translate(-50%, -50%) scale(" + scale + ")";
+            dotCore.style.boxShadow = "0 0 " + (16 + Math.round(progress * 18)) + "px rgba(16, 185, 129, 0.9)";
 
             if (progress < 1) {
-                requestAnimationFrame(animationStep);
+                requestAnimationFrame(step);
             } else {
                 onComplete();
             }
         }
 
-        requestAnimationFrame(animationStep);
+        requestAnimationFrame(step);
     }
 
-    function flashDotSuccess() {
-        dotElement.style.backgroundColor = "#4caf50";
-        dotElement.style.boxShadow = "0 0 32px rgba(76, 175, 80, 1)";
-        dotElement.style.transform = "translate(-50%, -50%) scale(1.6)";
+    function flashSuccess() {
+        dotCore.style.backgroundColor = "#10b981";
+        dotCore.style.borderColor = "#ffffff";
+        dotCore.style.boxShadow = "0 0 36px rgba(16, 185, 129, 1)";
+        dotCore.style.transform = "translate(-50%, -50%) scale(1.6)";
 
         setTimeout(function () {
-            dotElement.style.transform = "translate(-50%, -50%) scale(0)";
+            dotCore.style.transform = "translate(-50%, -50%) scale(0)";
             setTimeout(function () {
-                dotElement.style.display = "none";
-            }, 200);
-        }, 180);
+                dotContainer.style.display = "none";
+            }, 150);
+        }, 160);
     }
 
-    async function calibrateSinglePoint(targetX, targetY, pointNumber, totalPoints) {
-        moveDotToPoint(targetX, targetY);
+    function calculatePointAccuracy(targetX, targetY, predictions) {
+        if (!predictions || predictions.length === 0) {
+            return { errorPx: 80, score: 60 };
+        }
 
-        instructionElement.textContent = "Look at the dot";
-        progressElement.textContent = "Point " + pointNumber + " of " + totalPoints;
+        let totalX = 0;
+        let totalY = 0;
+        for (let i = 0; i < predictions.length; i++) {
+            totalX += predictions[i].x;
+            totalY += predictions[i].y;
+        }
+
+        const avgX = totalX / predictions.length;
+        const avgY = totalY / predictions.length;
+
+        const distance = Math.sqrt(
+            Math.pow(avgX - targetX, 2) + Math.pow(avgY - targetY, 2)
+        );
+
+        const score = Math.max(0, Math.min(100, 100 - (distance / ACCURACY_THRESHOLD_PX) * 50));
+
+        return {
+            errorPx: distance,
+            score: parseFloat(score.toFixed(1))
+        };
+    }
+
+    async function calibrateSinglePoint(targetX, targetY, pointNumber, totalPoints, saccadeMs, dwellMs) {
+        moveDot(targetX, targetY);
+
+        instructionElement.textContent = "Focus on the center dot";
+        statusBannerElement.textContent = "Point " + pointNumber + " of " + totalPoints + " — keep head steady";
 
         EventAPI.emitCalibrationProgress({
             currentPoint: pointNumber,
             totalPoints: totalPoints,
-            phase: "calibrating"
+            phase: "capturing"
         });
 
-        await wait(SACCADE_DISCARD_MS);
+        await wait(saccadeMs);
 
         webgazer.recordScreenPosition(targetX, targetY, "click");
 
+        const collectTimeMs = dwellMs - saccadeMs;
+
         await new Promise(function (resolve) {
-            animateDotCollection(targetX, targetY, COLLECT_DURATION_MS, resolve);
+            animateCapture(collectTimeMs, resolve);
         });
 
-        for (let i = 0; i < 5; i++) {
+        const checkSamples = [];
+        for (let i = 0; i < 6; i++) {
             webgazer.recordScreenPosition(targetX, targetY, "click");
-            await wait(60);
-        }
-
-        flashDotSuccess();
-        await wait(320);
-    }
-
-    async function validateSinglePoint(targetX, targetY, pointNumber) {
-        moveDotToPoint(targetX, targetY);
-        dotElement.style.backgroundColor = "#e91e63";
-        dotElement.style.boxShadow = "0 0 18px rgba(233, 30, 99, 0.8)";
-
-        instructionElement.textContent = "Look at the dot — validation";
-        progressElement.textContent = "Validation " + pointNumber + " of " + VALIDATION_POINTS;
-
-        await wait(SACCADE_DISCARD_MS);
-
-        const samples = [];
-        const collectEndTime = Date.now() + COLLECT_DURATION_MS;
-
-        while (Date.now() < collectEndTime) {
-            const prediction = await webgazer.getCurrentPrediction();
-            if (prediction) {
-                samples.push({ x: prediction.x, y: prediction.y });
+            const pred = await webgazer.getCurrentPrediction();
+            if (pred) {
+                checkSamples.push({ x: pred.x, y: pred.y });
             }
-            await wait(50);
+            await wait(45);
         }
 
-        if (samples.length === 0) {
-            return null;
-        }
+        const pointQuality = calculatePointAccuracy(targetX, targetY, checkSamples);
 
-        let sumX = 0;
-        let sumY = 0;
-        for (let i = 0; i < samples.length; i++) {
-            sumX += samples[i].x;
-            sumY += samples[i].y;
-        }
-        const averageX = sumX / samples.length;
-        const averageY = sumY / samples.length;
+        flashSuccess();
+        await wait(240);
 
-        const errorDistance = Math.sqrt(
-            Math.pow(averageX - targetX, 2) +
-            Math.pow(averageY - targetY, 2)
-        );
-
-        flashDotSuccess();
-        await wait(300);
-
-        return errorDistance;
+        return {
+            pointNumber: pointNumber,
+            targetX: targetX,
+            targetY: targetY,
+            errorPx: pointQuality.errorPx,
+            score: pointQuality.score
+        };
     }
 
-    function computeAccuracyScore(errorDistances) {
-        const validErrors = errorDistances.filter(function (error) {
-            return error !== null;
-        });
-
-        if (validErrors.length === 0) {
-            return 0;
-        }
-
-        const averageError = validErrors.reduce(function (sum, error) {
-            return sum + error;
-        }, 0) / validErrors.length;
-
-        const score = Math.max(0, Math.min(100, 100 - (averageError / ACCURACY_GOOD_THRESHOLD_PX) * 50));
-
-        return parseFloat(score.toFixed(1));
-    }
-
-    async function runCalibrationSequence() {
+    async function runCalibration(mode) {
         if (isCalibrating) {
             return;
         }
         isCalibrating = true;
+        currentMode = mode || "full";
+
+        const points = currentMode === "quick" ? FIVE_POINTS : NINE_POINTS;
+        const dwellMs = currentMode === "quick" ? QUICK_DWELL_MS : FULL_DWELL_MS;
+        const saccadeMs = currentMode === "quick" ? QUICK_SACCADE_MS : FULL_SACCADE_MS;
 
         createOverlay();
-        instructionElement.textContent = "Eye Tracking Calibration — Follow the dot with your eyes";
-        await wait(1800);
+
+        const modeTitle = currentMode === "quick" ? "Quick Recalibration (5 Points)" : "Full 9-Point Calibration";
+        instructionElement.textContent = modeTitle;
+        statusBannerElement.textContent = "Follow each target dot with your eyes. Move eyes only, keep head still.";
+        qualityBadgeElement.textContent = "Live Quality: Estimating…";
+
+        console.log("[Calibration] Starting " + modeTitle + "…");
+        await wait(1400);
 
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
 
-        for (let i = 0; i < CALIBRATION_POINTS.length; i++) {
-            const point = CALIBRATION_POINTS[i];
-            const pixelX = Math.round(point.xPercent * viewportWidth);
-            const pixelY = Math.round(point.yPercent * viewportHeight);
+        const results = [];
 
-            await calibrateSinglePoint(pixelX, pixelY, i + 1, CALIBRATION_POINTS.length);
-            await wait(150);
+        for (let i = 0; i < points.length; i++) {
+            const pointDef = points[i];
+            const pixelX = Math.round(pointDef.xPercent * viewportWidth);
+            const pixelY = Math.round(pointDef.yPercent * viewportHeight);
+
+            const result = await calibrateSinglePoint(
+                pixelX,
+                pixelY,
+                i + 1,
+                points.length,
+                saccadeMs,
+                dwellMs
+            );
+
+            results.push(result);
+
+            let totalScore = 0;
+            for (let j = 0; j < results.length; j++) {
+                totalScore += results[j].score;
+            }
+            const runningAvgScore = parseFloat((totalScore / results.length).toFixed(1));
+
+            qualityBadgeElement.textContent =
+                "Point " + (i + 1) + "/" + points.length +
+                " Score: " + result.score + "% | Running Avg: " + runningAvgScore + "%";
+
+            console.log(
+                "[Calibration] Point " + (i + 1) + "/" + points.length +
+                " -> Error: " + Math.round(result.errorPx) + "px" +
+                ", Accuracy: " + result.score + "%" +
+                ", Running Avg: " + runningAvgScore + "%"
+            );
+
+            EventAPI.emitCalibrationQualityLive({
+                currentPoint: i + 1,
+                totalPoints: points.length,
+                pointAccuracy: result.score,
+                overallAccuracy: runningAvgScore,
+                phase: "calibrating",
+                mode: currentMode
+            });
+
+            await wait(120);
         }
 
-        instructionElement.textContent = "Calibration complete — now validating accuracy…";
-        await wait(700);
-
-        const errorDistances = [];
-
-        for (let i = 0; i < VALIDATION_POINT_INDICES.length; i++) {
-            const point = CALIBRATION_POINTS[VALIDATION_POINT_INDICES[i]];
-            const pixelX = Math.round(point.xPercent * viewportWidth);
-            const pixelY = Math.round(point.yPercent * viewportHeight);
-
-            const error = await validateSinglePoint(pixelX, pixelY, i + 1);
-            errorDistances.push(error);
+        let sumErrors = 0;
+        let sumScores = 0;
+        for (let i = 0; i < results.length; i++) {
+            sumErrors += results[i].errorPx;
+            sumScores += results[i].score;
         }
+        const finalAvgError = Math.round(sumErrors / results.length);
+        const finalAvgScore = parseFloat((sumScores / results.length).toFixed(1));
 
-        const accuracyScore = computeAccuracyScore(errorDistances);
+        inMemoryProfile = {
+            calibrated: true,
+            timestamp: Date.now(),
+            mode: currentMode,
+            overallScore: finalAvgScore,
+            averageErrorPx: finalAvgError,
+            pointResults: results
+        };
 
-        if (accuracyScore < 40) {
-            instructionElement.textContent =
-                "Accuracy was low (" + accuracyScore + "/100) — retrying calibration…";
-            progressElement.textContent = "";
-            await wait(1800);
+        instructionElement.textContent = "Calibration Complete!";
+        statusBannerElement.textContent = "Final Accuracy Score: " + finalAvgScore + " / 100 (Avg Error: " + finalAvgError + "px)";
+        qualityBadgeElement.textContent = "Overall Accuracy: " + finalAvgScore + "%";
 
-            removeOverlay();
-            isCalibrating = false;
+        console.log(
+            "[Calibration] Completed " + modeTitle +
+            " -> Final Score: " + finalAvgScore + "/100" +
+            ", Avg Error: " + finalAvgError + "px"
+        );
 
-            await runCalibrationSequence();
-            return;
-        }
-
-        instructionElement.textContent =
-            "Calibration successful — accuracy score: " + accuracyScore + " / 100";
-        progressElement.textContent = "";
-        await wait(1600);
+        await wait(1400);
 
         removeOverlay();
         isCalibrating = false;
 
-        EventAPI.emitCalibrationComplete(accuracyScore);
+        EventAPI.emitCalibrationComplete(finalAvgScore, currentMode);
     }
 
     function removeOverlay() {
@@ -307,15 +420,51 @@ const CalibrationUI = (function () {
         });
     }
 
+    function runCalibrationSequence() {
+        return runCalibration("full");
+    }
+
+    function runQuickRecalibration() {
+        return runCalibration("quick");
+    }
+
     function triggerRecalibration(reason) {
         if (!isCalibrating) {
-            runCalibrationSequence();
+            console.log("[Calibration] Recalibration triggered. Reason:", reason);
+            if (reason === "quick" || reason === "head_pose_out_of_range" || reason === "gaze_drift_detected") {
+                runQuickRecalibration();
+            } else {
+                runCalibrationSequence();
+            }
         }
+    }
+
+    function getCalibrationProfile() {
+        return inMemoryProfile;
+    }
+
+    function clearCalibrationProfile() {
+        inMemoryProfile = {
+            calibrated: false,
+            timestamp: null,
+            mode: "none",
+            overallScore: 0,
+            averageErrorPx: 0,
+            pointResults: []
+        };
+    }
+
+    function isCalibratingNow() {
+        return isCalibrating;
     }
 
     return {
         runCalibrationSequence: runCalibrationSequence,
-        triggerRecalibration: triggerRecalibration
+        runQuickRecalibration: runQuickRecalibration,
+        triggerRecalibration: triggerRecalibration,
+        getCalibrationProfile: getCalibrationProfile,
+        clearCalibrationProfile: clearCalibrationProfile,
+        isCalibratingNow: isCalibratingNow
     };
 
 })();

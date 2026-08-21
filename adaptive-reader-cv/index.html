@@ -13,10 +13,15 @@
 <body>
 
     <div id="page-loading-screen">
-        <div class="loading-spinner"></div>
-        <div class="loading-text" id="loading-status-text">Loading models…</div>
+        <div class="loading-spinner" id="loading-spinner-el"></div>
+        <div class="loading-text" id="loading-status-text">Starting Adaptive Reader CV pipeline…</div>
+        <div id="loading-error-actions" style="display: none; margin-top: 14px; text-align: center;">
+            <p id="loading-error-desc" style="color: #fca5a5; font-size: 13px; max-width: 420px; line-height: 1.5; margin-bottom: 12px;"></p>
+            <button class="btn btn-primary" onclick="window.location.reload()">Retry Connection</button>
+        </div>
     </div>
 
+    <div id="raw-gaze-cursor"></div>
     <div id="gaze-cursor"></div>
 
     <header id="app-header">
@@ -30,15 +35,24 @@
                 <div class="status-indicator" id="indicator-gaze"></div>
                 Gaze
             </div>
-            <div class="status-badge" id="badge-confidence">
-                <div class="status-indicator" id="indicator-confidence"></div>
-                <span id="confidence-label">--</span>
+            <div class="status-badge" id="badge-quality">
+                <div class="status-indicator" id="indicator-quality"></div>
+                <span id="quality-score-label">Quality: --</span>
             </div>
-            <button class="btn btn-secondary" id="btn-recalibrate" onclick="handleManualRecalibration()">
-                ↺ Recalibrate
+            <button class="btn btn-warning" id="btn-quick-recal" onclick="handleQuickRecalibration()">
+                ⚡ Quick Recal <span class="hotkey-tag">R</span>
             </button>
-            <button class="btn btn-primary" id="btn-start-baseline" onclick="handleStartBaseline()" disabled>
-                ▶ Run Baseline
+            <button class="btn btn-secondary" id="btn-recalibrate" onclick="handleManualRecalibration()">
+                ↺ Calibrate <span class="hotkey-tag">C</span>
+            </button>
+            <button class="btn btn-secondary" id="btn-toggle-aoi" onclick="handleToggleAOI()">
+                ◫ AOI Boxes <span class="hotkey-tag">O</span>
+            </button>
+            <button class="btn btn-secondary" id="btn-toggle-debug" onclick="toggleDebugPanel()">
+                ⚙ Debug <span class="hotkey-tag">D</span>
+            </button>
+            <button class="btn btn-primary" id="btn-start-baseline" onclick="handleStartBaseline()">
+                ▶ Baseline <span class="hotkey-tag">B</span>
             </button>
         </div>
     </header>
@@ -49,54 +63,35 @@
             <div id="text-container">
 
                 <p class="paragraph" id="paragraph-0">
-                    <span class="text-line" id="line-0-0">Reading is one of the most complex cognitive tasks humans
-                        perform.</span>
-                    <span class="text-line" id="line-0-1">It requires the simultaneous coordination of eye movements,
-                        working</span>
-                    <span class="text-line" id="line-0-2">memory, language processing, and attention — all happening in
-                        a fraction</span>
-                    <span class="text-line" id="line-0-3">of a second. For people with dyslexia, this process is
-                        significantly harder,</span>
-                    <span class="text-line" id="line-0-4">not because of intelligence, but because of how their brain
-                        processes text.</span>
+                    Reading is one of the most complex cognitive tasks humans perform.
+                    It requires the simultaneous coordination of eye movements, working
+                    memory, language processing, and attention — all happening in a fraction
+                    of a second. For people with dyslexia, this process is significantly harder,
+                    not because of intelligence, but because of how their brain processes text.
                 </p>
 
                 <p class="paragraph" id="paragraph-1">
-                    <span class="text-line" id="line-1-0">Eye tracking technology offers a window into the reading
-                        process that</span>
-                    <span class="text-line" id="line-1-1">was previously only available to researchers in lab settings.
-                        Today,</span>
-                    <span class="text-line" id="line-1-2">webcam-based systems like WebGazer can approximate gaze
-                        position with</span>
-                    <span class="text-line" id="line-1-3">enough accuracy to track which line of text a person is
-                        reading —</span>
-                    <span class="text-line" id="line-1-4">without any special hardware, just a standard laptop
-                        camera.</span>
+                    Eye tracking technology offers a window into the reading process that
+                    was previously only available to researchers in lab settings. Today,
+                    webcam-based systems like WebGazer can approximate gaze position with
+                    enough accuracy to track which line of text a person is reading —
+                    without any special hardware, just a standard laptop camera.
                 </p>
 
                 <p class="paragraph" id="paragraph-2">
-                    <span class="text-line" id="line-2-0">The Adaptive Reader uses this signal to detect when a reader
-                        is</span>
-                    <span class="text-line" id="line-2-1">struggling — revisiting the same line repeatedly, reading
-                        unusually</span>
-                    <span class="text-line" id="line-2-2">slowly, or losing their place — and automatically adjusts the
-                        display:</span>
-                    <span class="text-line" id="line-2-3">larger fonts, wider spacing, highlighted focus lines, and
-                        simplified</span>
-                    <span class="text-line" id="line-2-4">text when needed. All of this happens in real time,
-                        invisibly.</span>
+                    The Adaptive Reader uses this signal to detect when a reader is
+                    struggling — revisiting the same line repeatedly, reading unusually
+                    slowly, or losing their place — and automatically adjusts the display:
+                    larger fonts, wider spacing, highlighted focus lines, and simplified
+                    text when needed. All of this happens in real time, invisibly.
                 </p>
 
                 <p class="paragraph" id="paragraph-3">
-                    <span class="text-line" id="line-3-0">The key insight behind this system is that gaze tracking does
-                        not need</span>
-                    <span class="text-line" id="line-3-1">to be word-perfect to be useful. Knowing which line a person
-                        is on</span>
-                    <span class="text-line" id="line-3-2">is enough to provide meaningful, contextual support. This
-                        approach</span>
-                    <span class="text-line" id="line-3-3">is both technically achievable with today's webcam hardware
-                        and</span>
-                    <span class="text-line" id="line-3-4">meaningfully impactful for readers who need it most.</span>
+                    The key insight behind this system is that gaze tracking does not need
+                    to be word-perfect to be useful. Knowing which line a person is on
+                    is enough to provide meaningful, contextual support. This approach
+                    is both technically achievable with today's webcam hardware and
+                    meaningfully impactful for readers who need it most.
                 </p>
 
             </div>
@@ -107,24 +102,38 @@
             <div class="sidebar-card">
                 <div class="sidebar-card-title">Live Gaze Signal</div>
                 <div class="metric-row">
-                    <span class="metric-label">Screen X</span>
-                    <span class="metric-value" id="metric-gaze-x">—</span>
+                    <span class="metric-label">Smoothed Gaze</span>
+                    <span class="metric-value" id="metric-gaze-coords">—</span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Screen Y</span>
-                    <span class="metric-value" id="metric-gaze-y">—</span>
+                    <span class="metric-label">Raw Gaze</span>
+                    <span class="metric-value" id="metric-raw-coords">—</span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Line Index</span>
-                    <span class="metric-value" id="metric-line-index">—</span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-label">Paragraph</span>
-                    <span class="metric-value" id="metric-para-index">—</span>
+                    <span class="metric-label">AOI Target</span>
+                    <span class="metric-value" id="metric-line-info">—</span>
                 </div>
                 <div class="metric-row">
                     <span class="metric-label">Confidence</span>
                     <span class="metric-value" id="metric-confidence">—</span>
+                </div>
+            </div>
+
+            <div class="sidebar-card">
+                <div class="sidebar-card-title">Signal Quality Score</div>
+                <div class="metric-row">
+                    <span class="metric-label">Overall Score</span>
+                    <span class="metric-value" id="metric-quality-score">0 / 100</span>
+                </div>
+                <div class="quality-breakdown-bar">
+                    <div class="quality-segment quality-seg-face" id="bar-seg-face" style="width: 0%;"></div>
+                    <div class="quality-segment quality-seg-head" id="bar-seg-head" style="width: 0%;"></div>
+                    <div class="quality-segment quality-seg-eye" id="bar-seg-eye" style="width: 0%;"></div>
+                    <div class="quality-segment quality-seg-gaze" id="bar-seg-gaze" style="width: 0%;"></div>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label" style="font-size: 11px;">Face / Head / Eye / Stability</span>
+                    <span class="metric-value" id="metric-quality-breakdown" style="font-size: 11px;">0/0/0/0</span>
                 </div>
             </div>
 
@@ -143,13 +152,13 @@
                     <span class="metric-value" id="metric-roll">—</span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Blink</span>
+                    <span class="metric-label">Blink State</span>
                     <span class="metric-value" id="metric-blink">—</span>
                 </div>
             </div>
 
             <div class="sidebar-card">
-                <div class="sidebar-card-title">Calibration</div>
+                <div class="sidebar-card-title">Calibration Profile</div>
                 <div class="metric-row">
                     <span class="metric-label">Status</span>
                     <span class="metric-value" id="metric-cal-status">Not calibrated</span>
@@ -166,7 +175,7 @@
             <div class="sidebar-card">
                 <div class="sidebar-card-title">Baseline</div>
                 <div class="metric-row">
-                    <span class="metric-label">Est. WPM</span>
+                    <span class="metric-label">Baseline WPM</span>
                     <span class="metric-value" id="metric-wpm">—</span>
                 </div>
                 <div class="metric-row">
@@ -174,7 +183,7 @@
                     <span class="metric-value" id="metric-fixation">—</span>
                 </div>
                 <div class="metric-row">
-                    <span class="metric-label">Blink Rate/min</span>
+                    <span class="metric-label">Blink Rate</span>
                     <span class="metric-value" id="metric-blink-rate">—</span>
                 </div>
             </div>
@@ -188,7 +197,50 @@
 
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/webgazer@3.0.1/dist/webgazer.js" crossorigin="anonymous"></script>
+    <div id="debug-floating-panel">
+        <div class="debug-header">
+            <span>CV Debug & Signal Tuning</span>
+            <button class="debug-close-btn" onclick="toggleDebugPanel()">✕</button>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Raw Gaze (X, Y)</span>
+            <span class="metric-value" id="dbg-raw-coords">0, 0</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Smoothed (X, Y)</span>
+            <span class="metric-value" id="dbg-smooth-coords">0, 0</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Instant Jitter Delta</span>
+            <span class="metric-value" id="dbg-jitter-delta">0 px</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Show Raw Cursor</span>
+            <input type="checkbox" id="dbg-show-raw-cursor" onchange="toggleRawCursor(this.checked)" />
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Show AOI Box Overlays</span>
+            <input type="checkbox" id="dbg-show-aoi-overlay" onchange="handleToggleAOI(this.checked)" />
+        </div>
+        <div style="margin-top: 10px; border-top: 1px solid var(--color-border); padding-top: 8px;">
+            <div class="metric-row">
+                <span class="metric-label">Smoothing Window: <b id="dbg-window-val">45</b> ms</span>
+            </div>
+            <div class="slider-container">
+                <span style="font-size: 10px; color: var(--color-text-muted);">Fast (15ms)</span>
+                <input type="range" min="15" max="150" value="45" step="5" id="dbg-window-slider" oninput="handleWindowChange(this.value)" />
+                <span style="font-size: 10px; color: var(--color-text-muted);">Smooth (150ms)</span>
+            </div>
+        </div>
+        <div style="margin-top: 10px; border-top: 1px solid var(--color-border); padding-top: 8px;">
+            <div class="metric-row">
+                <span class="metric-label">In-Memory Profile</span>
+                <button class="btn btn-secondary" style="padding: 3px 8px; font-size: 11px;" onclick="logCurrentProfile()">Log to Console</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="webgazer.js"></script>
 
     <script>
         window.mediapipeReadyResolve = null;
@@ -198,7 +250,7 @@
     </script>
 
     <script type="module">
-        import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js";
+        import { FaceLandmarker, FilesetResolver } from "./mediapipe/tasks-vision-wasm/vision_bundle.mjs";
         window.FaceLandmarker = FaceLandmarker;
         window.FilesetResolver = FilesetResolver;
         window.mediapipeReadyResolve();
@@ -217,11 +269,14 @@
     <script>
 
         const gazeCursor = document.getElementById("gaze-cursor");
+        const rawGazeCursor = document.getElementById("raw-gaze-cursor");
         const loadingScreen = document.getElementById("page-loading-screen");
         const loadingStatusText = document.getElementById("loading-status-text");
+        const loadingErrorActions = document.getElementById("loading-error-actions");
+        const loadingErrorDesc = document.getElementById("loading-error-desc");
+        const loadingSpinner = document.getElementById("loading-spinner-el");
 
-        let currentFocusedLine = null;
-        let calibrationDone = false;
+        let showRawDot = false;
 
         function appendToLog(message, type) {
             const logContainer = document.getElementById("event-log");
@@ -241,17 +296,21 @@
                 loadingScreen.classList.add("hidden");
                 AdaptiveReaderCV.setTextRegion("#text-container");
                 AdaptiveReaderCV.startCalibration();
-            }, 800);
+            }, 700);
             appendToLog("SYSTEM READY", "event");
         });
 
-        EventAPI.on("onCalibrationProgress", function (data) {
-            loadingStatusText.textContent = "Calibrating point " + data.currentPoint + " of " + data.totalPoints;
+        EventAPI.on("onCalibrationQualityLive", function (data) {
+            appendToLog(
+                "CALIB POINT " + data.currentPoint + "/" + data.totalPoints +
+                " -> " + data.pointAccuracy + "% (Avg: " + data.overallAccuracy + "%)",
+                "event"
+            );
         });
 
         EventAPI.on("onCalibrationComplete", function (data) {
-            calibrationDone = true;
             const score = data.accuracyScore;
+            const mode = data.mode || "full";
             const scoreElement = document.getElementById("metric-cal-accuracy");
             const statusElement = document.getElementById("metric-cal-status");
             const bar = document.getElementById("calibration-accuracy-bar");
@@ -261,7 +320,7 @@
 
             if (score >= 70) {
                 scoreElement.className = "metric-value good";
-                statusElement.textContent = "Calibrated ✓";
+                statusElement.textContent = "Calibrated (" + mode + ") ✓";
             } else if (score >= 45) {
                 scoreElement.className = "metric-value warn";
                 statusElement.textContent = "Calibrated (fair)";
@@ -273,7 +332,7 @@
             document.getElementById("btn-start-baseline").disabled = false;
             document.getElementById("indicator-gaze").classList.add("active");
 
-            appendToLog("CALIBRATION COMPLETE — score: " + score, "event");
+            appendToLog("CALIBRATION COMPLETE (" + mode + ") — score: " + score, "event");
         });
 
         EventAPI.on("onGazeUpdate", function (data) {
@@ -281,35 +340,60 @@
             gazeCursor.style.left = data.x + "px";
             gazeCursor.style.top = data.y + "px";
 
-            document.getElementById("metric-gaze-x").textContent = data.x;
-            document.getElementById("metric-gaze-y").textContent = data.y;
-            document.getElementById("metric-line-index").textContent = data.lineIndex >= 0 ? data.lineIndex : "—";
-            document.getElementById("metric-para-index").textContent = data.paragraphIndex >= 0 ? data.paragraphIndex : "—";
+            if (showRawDot && data.rawX !== undefined && data.rawY !== undefined) {
+                rawGazeCursor.style.display = "block";
+                rawGazeCursor.style.left = data.rawX + "px";
+                rawGazeCursor.style.top = data.rawY + "px";
+            } else {
+                rawGazeCursor.style.display = "none";
+            }
+
+            document.getElementById("metric-gaze-coords").textContent = data.x + ", " + data.y;
+            document.getElementById("metric-raw-coords").textContent = (data.rawX || 0) + ", " + (data.rawY || 0);
+
+            let aoiText = "Outside text";
+            if (data.aoi && data.aoi.type === "line") {
+                aoiText = "Line " + data.lineIndex + " (P" + data.paragraphIndex + ")";
+            } else if (data.aoi && data.aoi.type === "paragraph") {
+                aoiText = "Para " + data.paragraphIndex;
+            }
+            document.getElementById("metric-line-info").textContent = aoiText;
 
             const confidencePercent = Math.round(data.confidence * 100);
             document.getElementById("metric-confidence").textContent = confidencePercent + "%";
-            document.getElementById("confidence-label").textContent = confidencePercent + "%";
 
-            const indicator = document.getElementById("indicator-confidence");
-            if (data.confidence > 0.7) {
-                indicator.className = "status-indicator active";
-            } else if (data.confidence > 0.3) {
-                indicator.className = "status-indicator warning";
+            document.getElementById("dbg-smooth-coords").textContent = data.x + ", " + data.y;
+            document.getElementById("dbg-raw-coords").textContent = (data.rawX || 0) + ", " + (data.rawY || 0);
+            if (data.rawX !== undefined && data.rawY !== undefined) {
+                const delta = Math.round(Math.sqrt(Math.pow(data.rawX - data.x, 2) + Math.pow(data.rawY - data.y, 2)));
+                document.getElementById("dbg-jitter-delta").textContent = delta + " px";
+            }
+        });
+
+        EventAPI.on("onSignalQualityUpdate", function (data) {
+            document.getElementById("metric-quality-score").textContent = data.score + " / 100";
+            document.getElementById("quality-score-label").textContent = "Quality: " + data.score + "%";
+
+            const qualityIndicator = document.getElementById("indicator-quality");
+            if (data.score >= 70) {
+                qualityIndicator.className = "status-indicator active";
+            } else if (data.score >= 45) {
+                qualityIndicator.className = "status-indicator warning";
             } else {
-                indicator.className = "status-indicator error";
+                qualityIndicator.className = "status-indicator error";
             }
 
-            if (currentFocusedLine) {
-                currentFocusedLine.classList.remove("gaze-focused");
-            }
+            if (data.breakdown) {
+                document.getElementById("bar-seg-face").style.width = data.breakdown.facePresence + "%";
+                document.getElementById("bar-seg-head").style.width = data.breakdown.headPoseStability + "%";
+                document.getElementById("bar-seg-eye").style.width = data.breakdown.eyeState + "%";
+                document.getElementById("bar-seg-gaze").style.width = data.breakdown.gazeStability + "%";
 
-            if (data.localLineIndex >= 0) {
-                const lineId = "line-" + data.paragraphIndex + "-" + data.localLineIndex;
-                const lineElement = document.getElementById(lineId);
-                if (lineElement) {
-                    lineElement.classList.add("gaze-focused");
-                    currentFocusedLine = lineElement;
-                }
+                document.getElementById("metric-quality-breakdown").textContent =
+                    data.breakdown.facePresence + "/" +
+                    data.breakdown.headPoseStability + "/" +
+                    data.breakdown.eyeState + "/" +
+                    data.breakdown.gazeStability;
             }
         });
 
@@ -321,6 +405,7 @@
             } else {
                 faceIndicator.className = "status-indicator error";
                 gazeCursor.style.display = "none";
+                rawGazeCursor.style.display = "none";
             }
 
             if (data.headPose) {
@@ -343,43 +428,99 @@
         });
 
         EventAPI.on("onBaselineComplete", function (data) {
-            document.getElementById("metric-wpm").textContent = data.wordsPerMinute;
-            document.getElementById("metric-fixation").textContent = data.averageFixationDuration + " ms";
-            document.getElementById("metric-blink-rate").textContent = data.blinkRate + " / min";
+            document.getElementById("metric-wpm").textContent = data.baselineWPM + " WPM";
+            document.getElementById("metric-fixation").textContent = data.baselineFixationMs + " ms";
+            document.getElementById("metric-blink-rate").textContent = data.baselineBlinkRate + " / min";
             appendToLog(
-                "BASELINE DONE — WPM: " + data.wordsPerMinute +
-                ", fixation: " + data.averageFixationDuration + "ms" +
-                ", blinks: " + data.blinkRate + "/min",
+                "BASELINE DONE — WPM: " + data.baselineWPM +
+                ", Fixation: " + data.baselineFixationMs + "ms" +
+                ", BlinkRate: " + data.baselineBlinkRate + "/min",
                 "event"
             );
             document.getElementById("btn-start-baseline").textContent = "✓ Baseline Done";
-            document.getElementById("btn-start-baseline").disabled = true;
         });
 
         function handleManualRecalibration() {
             AdaptiveReaderCV.triggerManualRecalibration();
-            appendToLog("MANUAL RECALIBRATION requested", "warn");
+            appendToLog("MANUAL FULL CALIBRATION requested", "warn");
+        }
+
+        function handleQuickRecalibration() {
+            AdaptiveReaderCV.triggerQuickRecalibration();
+            appendToLog("QUICK RECALIBRATION (5-point) requested", "warn");
         }
 
         function handleStartBaseline() {
-            document.getElementById("btn-start-baseline").textContent = "Running… (45s)";
-            document.getElementById("btn-start-baseline").disabled = true;
             AdaptiveReaderCV.startBaseline();
-            appendToLog("BASELINE CAPTURE started — 45 seconds", "event");
+            appendToLog("BASELINE CAPTURE started", "event");
+        }
+
+        function handleToggleAOI(forcedState) {
+            const isVisible = AdaptiveReaderCV.toggleAOIDebugOverlay(forcedState);
+            const aoiCheckbox = document.getElementById("dbg-show-aoi-overlay");
+            if (aoiCheckbox) {
+                aoiCheckbox.checked = isVisible;
+            }
+            appendToLog("AOI Debug Overlay: " + (isVisible ? "ON" : "OFF"), "event");
+        }
+
+        function toggleDebugPanel() {
+            const panel = document.getElementById("debug-floating-panel");
+            panel.classList.toggle("open");
+        }
+
+        function toggleRawCursor(checked) {
+            showRawDot = checked;
+            if (!showRawDot) {
+                rawGazeCursor.style.display = "none";
+            }
+        }
+
+        function handleWindowChange(val) {
+            const num = parseInt(val, 10);
+            document.getElementById("dbg-window-val").textContent = num;
+            AdaptiveReaderCV.setSmoothingWindowMs(num);
+            appendToLog("Smoothing window set to " + num + "ms", "event");
+        }
+
+        function logCurrentProfile() {
+            const profile = AdaptiveReaderCV.getCalibrationProfile();
+            console.log("[Calibration Profile]", profile);
+            appendToLog("Calibration profile logged to DevTools console", "event");
         }
 
         window.handleManualRecalibration = handleManualRecalibration;
+        window.handleQuickRecalibration = handleQuickRecalibration;
         window.handleStartBaseline = handleStartBaseline;
+        window.handleToggleAOI = handleToggleAOI;
+        window.toggleDebugPanel = toggleDebugPanel;
+        window.toggleRawCursor = toggleRawCursor;
+        window.handleWindowChange = handleWindowChange;
+        window.logCurrentProfile = logCurrentProfile;
 
         async function bootSystem() {
-            loadingStatusText.textContent = "Requesting camera access…";
+            loadingStatusText.textContent = "Requesting webcam access…";
+            loadingSpinner.style.display = "block";
+            loadingErrorActions.style.display = "none";
 
             try {
                 await AdaptiveReaderCV.initialize();
             } catch (error) {
-                loadingStatusText.textContent = "Error: " + error.message;
-                appendToLog("INIT ERROR: " + error.message, "error");
                 console.error("[Boot] Fatal error:", error);
+                loadingSpinner.style.display = "none";
+                loadingErrorActions.style.display = "block";
+
+                let friendlyMsg = "Unable to start eye tracking.";
+                if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+                    friendlyMsg = "Camera access was denied. Please click the camera icon in your browser address bar to allow camera permissions, then click Retry.";
+                } else if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+                    friendlyMsg = "No webcam was detected on your computer. Please plug in a webcam and click Retry.";
+                } else {
+                    friendlyMsg = "Error initializing vision models (" + (error.message || error) + "). Please check your connection and click Retry.";
+                }
+                loadingStatusText.textContent = "Camera Setup Notice";
+                loadingErrorDesc.textContent = friendlyMsg;
+                appendToLog("INIT ERROR: " + friendlyMsg, "error");
             }
         }
 

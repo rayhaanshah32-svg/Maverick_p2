@@ -1,8 +1,6 @@
 const AdaptiveReaderCV = (function () {
 
     let isInitialized = false;
-    let webgazerIsReady = false;
-    let mediapipeIsReady = false;
 
     async function initialize() {
         if (isInitialized) {
@@ -16,14 +14,22 @@ const AdaptiveReaderCV = (function () {
 
         const videoElement = CameraManager.getVideoElement();
 
-        await setupWebGazer(videoElement);
-        console.log("[AdaptiveReaderCV] WebGazer ready.");
-
         console.log("[AdaptiveReaderCV] Waiting for MediaPipe module globals…");
         await window.mediapipeReadyPromise;
 
+        if (window.Module) {
+            delete window.Module;
+        }
+
         await MediaPipeEngine.initialize();
         console.log("[AdaptiveReaderCV] MediaPipe Face Landmarker ready.");
+
+        if (window.Module) {
+            delete window.Module;
+        }
+
+        await setupWebGazer(videoElement);
+        console.log("[AdaptiveReaderCV] WebGazer ready.");
 
         MediaPipeEngine.start(videoElement);
 
@@ -37,6 +43,15 @@ const AdaptiveReaderCV = (function () {
             CalibrationUI.triggerRecalibration(eventData.reason);
         });
 
+        EventAPI.on("onCalibrationComplete", function (data) {
+            console.log("[AdaptiveReaderCV] Calibration complete. Launching baseline reading in 1.2s…");
+            setTimeout(function () {
+                startBaseline();
+            }, 1200);
+        });
+
+        setupKeyboardShortcuts();
+
         isInitialized = true;
 
         EventAPI.emitSystemReady();
@@ -49,8 +64,7 @@ const AdaptiveReaderCV = (function () {
         webgazer.params.saveDataAcrossSessions = false;
         webgazer.params.applyKalmanFilter = false;
         webgazer.params.showGazeDot = false;
-
-        webgazer.params.videoElement = videoElement;
+        webgazer.params.faceMeshSolutionPath = "./mediapipe/face_mesh";
 
         webgazer.setGazeListener(function (gazeData, elapsedTime) {
             GazePipeline.handleIncomingWebGazerPoint(gazeData, elapsedTime);
@@ -63,12 +77,57 @@ const AdaptiveReaderCV = (function () {
         webgazer.showFaceFeedbackBox(false);
     }
 
+    function setupKeyboardShortcuts() {
+        window.addEventListener("keydown", function (event) {
+            if (event.key === "r" || event.key === "R") {
+                console.log("[HotKey] 'R' pressed -> Quick Recalibration");
+                triggerQuickRecalibration();
+            } else if (event.key === "c" || event.key === "C") {
+                console.log("[HotKey] 'C' pressed -> Full 9-Point Calibration");
+                startCalibration();
+            } else if (event.key === "d" || event.key === "D") {
+                console.log("[HotKey] 'D' pressed -> Toggle Debug Panel");
+                if (typeof window.toggleDebugPanel === "function") {
+                    window.toggleDebugPanel();
+                }
+            } else if (event.key === "o" || event.key === "O") {
+                console.log("[HotKey] 'O' pressed -> Toggle AOI Overlay");
+                toggleAOIDebugOverlay();
+            } else if (event.key === "b" || event.key === "B") {
+                console.log("[HotKey] 'B' pressed -> Start Baseline");
+                startBaseline();
+            } else if (event.key === "s" || event.key === "S") {
+                console.log("[HotKey] 'S' pressed -> Fast Skip Baseline");
+                skipBaselineWithDefaults();
+            } else if (event.key === "h" || event.key === "H") {
+                console.log("[HotKey] 'H' pressed -> Toggle Demo Mode");
+                toggleDemoMode();
+            }
+        });
+    }
+
+    function toggleDemoMode() {
+        const headerControls = document.getElementById("header-controls");
+        if (headerControls) {
+            headerControls.classList.toggle("demo-mode-clean");
+        }
+    }
+
     async function startCalibration() {
         await CalibrationUI.runCalibrationSequence();
     }
 
+    async function triggerQuickRecalibration() {
+        GazePipeline.resetDriftTracking();
+        await CalibrationUI.runQuickRecalibration();
+    }
+
     function startBaseline() {
         BaselineCapture.startBaseline();
+    }
+
+    function skipBaselineWithDefaults() {
+        BaselineCapture.skipBaselineWithDefaults();
     }
 
     function triggerManualRecalibration() {
@@ -84,11 +143,38 @@ const AdaptiveReaderCV = (function () {
         DOMMapper.rebuildBoundingBoxCache();
     }
 
+    function toggleAOIDebugOverlay(state) {
+        return DOMMapper.toggleDebugOverlay(state);
+    }
+
+    function getCalibrationProfile() {
+        return CalibrationUI.getCalibrationProfile();
+    }
+
+    function clearCalibrationProfile() {
+        CalibrationUI.clearCalibrationProfile();
+    }
+
+    function setSmoothingWindowMs(ms) {
+        GazePipeline.setSmoothingWindowMs(ms);
+    }
+
+    function getSmoothingWindowMs() {
+        return GazePipeline.getSmoothingWindowMs();
+    }
+
     return {
         initialize: initialize,
         startCalibration: startCalibration,
+        triggerQuickRecalibration: triggerQuickRecalibration,
         startBaseline: startBaseline,
+        skipBaselineWithDefaults: skipBaselineWithDefaults,
         triggerManualRecalibration: triggerManualRecalibration,
+        toggleAOIDebugOverlay: toggleAOIDebugOverlay,
+        getCalibrationProfile: getCalibrationProfile,
+        clearCalibrationProfile: clearCalibrationProfile,
+        setSmoothingWindowMs: setSmoothingWindowMs,
+        getSmoothingWindowMs: getSmoothingWindowMs,
         setTextRegion: setTextRegion,
         refreshTextRegion: refreshTextRegion,
         on: EventAPI.on,

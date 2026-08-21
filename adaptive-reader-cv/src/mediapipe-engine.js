@@ -39,14 +39,17 @@ const MediaPipeEngine = (function () {
             );
         }
 
+        if (window.Module) {
+            delete window.Module;
+        }
+
         const filesetResolver = await FilesetResolver.forVisionTasks(
-            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+            "./mediapipe/tasks-vision-wasm"
         );
 
         faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
             baseOptions: {
-                modelAssetPath:
-                    "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+                modelAssetPath: "./mediapipe/tasks-vision-wasm/face_landmarker.task",
                 delegate: "GPU"
             },
             outputFaceBlendshapes: false,
@@ -109,74 +112,85 @@ const MediaPipeEngine = (function () {
         };
     }
 
+    let lastInferenceTime = 0;
+    const MIN_INFERENCE_INTERVAL_MS = 32;
+
     function runDetectionLoop(videoElement) {
         if (!isRunning) {
             return;
         }
 
         const nowInMs = performance.now();
-        const results = faceLandmarker.detectForVideo(videoElement, nowInMs);
 
-        const facePresent = results.faceLandmarks && results.faceLandmarks.length > 0;
-        let headPose = { yaw: 0, pitch: 0, roll: 0 };
-        let blinkState = false;
+        if (nowInMs - lastInferenceTime >= MIN_INFERENCE_INTERVAL_MS) {
+            lastInferenceTime = nowInMs;
 
-        if (facePresent) {
-            const landmarks = results.faceLandmarks[0];
+            try {
+                const results = faceLandmarker.detectForVideo(videoElement, nowInMs);
+                const facePresent = results.faceLandmarks && results.faceLandmarks.length > 0;
+                let headPose = { yaw: 0, pitch: 0, roll: 0 };
+                let blinkState = false;
 
-            if (results.facialTransformationMatrixes && results.facialTransformationMatrixes.length > 0) {
-                headPose = extractHeadPoseFromMatrix(results.facialTransformationMatrixes[0]);
-            }
+                if (facePresent) {
+                    const landmarks = results.faceLandmarks[0];
 
-            const leftEAR = computeEyeAspectRatio(
-                landmarks,
-                LEFT_EYE_UPPER_INDICES,
-                LEFT_EYE_LOWER_INDICES,
-                LEFT_EYE_HORIZONTAL_INDICES
-            );
+                    if (results.facialTransformationMatrixes && results.facialTransformationMatrixes.length > 0) {
+                        headPose = extractHeadPoseFromMatrix(results.facialTransformationMatrixes[0]);
+                    }
 
-            const rightEAR = computeEyeAspectRatio(
-                landmarks,
-                RIGHT_EYE_UPPER_INDICES,
-                RIGHT_EYE_LOWER_INDICES,
-                RIGHT_EYE_HORIZONTAL_INDICES
-            );
+                    const leftEAR = computeEyeAspectRatio(
+                        landmarks,
+                        LEFT_EYE_UPPER_INDICES,
+                        LEFT_EYE_LOWER_INDICES,
+                        LEFT_EYE_HORIZONTAL_INDICES
+                    );
 
-            const averageEAR = (leftEAR + rightEAR) / 2;
+                    const rightEAR = computeEyeAspectRatio(
+                        landmarks,
+                        RIGHT_EYE_UPPER_INDICES,
+                        RIGHT_EYE_LOWER_INDICES,
+                        RIGHT_EYE_HORIZONTAL_INDICES
+                    );
 
-            if (averageEAR < EAR_BLINK_THRESHOLD) {
-                blinkFrameCount++;
-                if (blinkFrameCount >= EAR_BLINK_FRAMES_NEEDED) {
-                    isCurrentlyBlinking = true;
+                    const averageEAR = (leftEAR + rightEAR) / 2;
+
+                    if (averageEAR < EAR_BLINK_THRESHOLD) {
+                        blinkFrameCount++;
+                        if (blinkFrameCount >= EAR_BLINK_FRAMES_NEEDED) {
+                            isCurrentlyBlinking = true;
+                        }
+                    } else {
+                        blinkFrameCount = 0;
+                        isCurrentlyBlinking = false;
+                    }
+
+                    blinkState = isCurrentlyBlinking;
                 }
-            } else {
-                blinkFrameCount = 0;
-                isCurrentlyBlinking = false;
+
+                const qualityData = {
+                    facePresent: facePresent,
+                    headPose: headPose,
+                    blinkState: blinkState
+                };
+
+                lastQualityData = qualityData;
+
+                const faceStatusChanged = lastEmittedFacePresent !== facePresent;
+                const headMovedTooFar =
+                    Math.abs(headPose.yaw) > HEAD_YAW_THRESHOLD ||
+                    Math.abs(headPose.pitch) > HEAD_PITCH_THRESHOLD;
+
+                if (faceStatusChanged) {
+                    lastEmittedFacePresent = facePresent;
+                    EventAPI.emitFaceQualityChange(qualityData);
+                }
+
+                if (headMovedTooFar) {
+                    EventAPI.emitFaceQualityChange(qualityData);
+                }
+            } catch (err) {
+                console.warn("[MediaPipeEngine] Inference frame skipped:", err.message);
             }
-
-            blinkState = isCurrentlyBlinking;
-        }
-
-        const qualityData = {
-            facePresent: facePresent,
-            headPose: headPose,
-            blinkState: blinkState
-        };
-
-        lastQualityData = qualityData;
-
-        const faceStatusChanged = lastEmittedFacePresent !== facePresent;
-        const headMovedTooFar =
-            Math.abs(headPose.yaw) > HEAD_YAW_THRESHOLD ||
-            Math.abs(headPose.pitch) > HEAD_PITCH_THRESHOLD;
-
-        if (faceStatusChanged) {
-            lastEmittedFacePresent = facePresent;
-            EventAPI.emitFaceQualityChange(qualityData);
-        }
-
-        if (headMovedTooFar) {
-            EventAPI.emitFaceQualityChange(qualityData);
         }
 
         animationFrameId = requestAnimationFrame(function () {

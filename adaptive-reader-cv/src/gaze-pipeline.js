@@ -1,24 +1,27 @@
 const GazePipeline = (function () {
 
-    const SMOOTHING_WINDOW_MS = 40;
+    let smoothingWindowMs = 45;
     const OUTPUT_RATE_HZ = 20;
     const OUTPUT_INTERVAL_MS = 1000 / OUTPUT_RATE_HZ;
 
-    const RECALIBRATION_DRIFT_THRESHOLD_PX = 120;
+    const RECALIBRATION_DRIFT_THRESHOLD_PX = 130;
     const RECALIBRATION_CHECK_WINDOW_MS = 5000;
 
     let rawSampleBuffer = [];
-    let smoothedOutputBuffer = [];
+    let latestRawPoint = { x: 0, y: 0 };
     let outputTimerId = null;
     let isRunning = false;
 
     let lastKnownGoodPoint = null;
     let driftCheckSamples = [];
 
+    let comparisonLogCounter = 0;
+
     function addRawSample(x, y, confidence, timestamp) {
+        latestRawPoint = { x: x, y: y };
         rawSampleBuffer.push({ x: x, y: y, confidence: confidence, timestamp: timestamp });
 
-        const cutoffTime = timestamp - SMOOTHING_WINDOW_MS;
+        const cutoffTime = timestamp - smoothingWindowMs;
         rawSampleBuffer = rawSampleBuffer.filter(function (sample) {
             return sample.timestamp >= cutoffTime;
         });
@@ -64,7 +67,7 @@ const GazePipeline = (function () {
             return sample.timestamp >= driftWindowStart;
         });
 
-        if (driftCheckSamples.length < 10) {
+        if (driftCheckSamples.length < 12) {
             return;
         }
 
@@ -95,7 +98,6 @@ const GazePipeline = (function () {
             checkForDrift(smoothedPoint);
 
             const lineMapping = DOMMapper.findLineAtPoint(smoothedPoint.x, smoothedPoint.y);
-            const quality = MediaPipeEngine.getLastQualityData();
 
             const avgConfidence =
                 rawSampleBuffer.length > 0
@@ -103,12 +105,33 @@ const GazePipeline = (function () {
                     rawSampleBuffer.length
                     : 0;
 
+            const roundedSmoothX = Math.round(smoothedPoint.x);
+            const roundedSmoothY = Math.round(smoothedPoint.y);
+            const roundedRawX = Math.round(latestRawPoint.x);
+            const roundedRawY = Math.round(latestRawPoint.y);
+
+            comparisonLogCounter++;
+            if (comparisonLogCounter % 40 === 0) {
+                const diffX = Math.abs(roundedRawX - roundedSmoothX);
+                const diffY = Math.abs(roundedRawY - roundedSmoothY);
+                console.log(
+                    "[Signal Smoothing] Raw: (" + roundedRawX + ", " + roundedRawY + ") | " +
+                    "Smoothed: (" + roundedSmoothX + ", " + roundedSmoothY + ") | " +
+                    "Delta: (" + diffX + "px, " + diffY + "px)"
+                );
+            }
+
+            DOMMapper.renderDebugOverlay(lineMapping.lineIndex, lineMapping.paragraphIndex);
+
             EventAPI.emitGazeUpdate({
-                x: Math.round(smoothedPoint.x),
-                y: Math.round(smoothedPoint.y),
+                x: roundedSmoothX,
+                y: roundedSmoothY,
+                rawX: roundedRawX,
+                rawY: roundedRawY,
                 lineIndex: lineMapping.lineIndex,
                 localLineIndex: lineMapping.localLineIndex,
                 paragraphIndex: lineMapping.paragraphIndex,
+                aoi: lineMapping.aoi,
                 confidence: parseFloat(avgConfidence.toFixed(3)),
                 timestamp: Date.now()
             });
@@ -151,8 +174,15 @@ const GazePipeline = (function () {
         driftCheckSamples = [];
     }
 
-    function getSmoothedOutputBuffer() {
-        return smoothedOutputBuffer.slice();
+    function setSmoothingWindowMs(newMs) {
+        if (newMs >= 10 && newMs <= 250) {
+            smoothingWindowMs = newMs;
+            console.log("[GazePipeline] Smoothing window updated to " + newMs + "ms");
+        }
+    }
+
+    function getSmoothingWindowMs() {
+        return smoothingWindowMs;
     }
 
     return {
@@ -160,7 +190,8 @@ const GazePipeline = (function () {
         start: start,
         stop: stop,
         resetDriftTracking: resetDriftTracking,
-        getSmoothedOutputBuffer: getSmoothedOutputBuffer,
+        setSmoothingWindowMs: setSmoothingWindowMs,
+        getSmoothingWindowMs: getSmoothingWindowMs,
         OUTPUT_RATE_HZ: OUTPUT_RATE_HZ
     };
 

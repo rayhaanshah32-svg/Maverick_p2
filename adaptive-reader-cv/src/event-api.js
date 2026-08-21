@@ -7,6 +7,8 @@ const EventAPI = (function () {
         onRecalibrationNeeded: [],
         onBaselineComplete: [],
         onCalibrationProgress: [],
+        onSignalQualityUpdate: [],
+        onCalibrationQualityLive: [],
         onSystemReady: []
     };
 
@@ -44,17 +46,41 @@ const EventAPI = (function () {
         emit("onGazeUpdate", {
             x: gazeObject.x,
             y: gazeObject.y,
+            rawX: gazeObject.rawX,
+            rawY: gazeObject.rawY,
             lineIndex: gazeObject.lineIndex,
             localLineIndex: gazeObject.localLineIndex,
             paragraphIndex: gazeObject.paragraphIndex,
+            aoi: gazeObject.aoi || null,
             confidence: gazeObject.confidence,
             timestamp: gazeObject.timestamp || Date.now()
         });
     }
 
-    function emitCalibrationComplete(accuracyScore) {
+    function emitCalibrationComplete(accuracyScore, mode) {
         emit("onCalibrationComplete", {
             accuracyScore: accuracyScore,
+            mode: mode || "full",
+            timestamp: Date.now()
+        });
+    }
+
+    function emitCalibrationQualityLive(qualityData) {
+        emit("onCalibrationQualityLive", {
+            currentPoint: qualityData.currentPoint,
+            totalPoints: qualityData.totalPoints,
+            pointAccuracy: qualityData.pointAccuracy,
+            overallAccuracy: qualityData.overallAccuracy,
+            phase: qualityData.phase,
+            mode: qualityData.mode
+        });
+    }
+
+    function emitSignalQualityUpdate(qualityData) {
+        emit("onSignalQualityUpdate", {
+            score: qualityData.score,
+            level: qualityData.level,
+            breakdown: qualityData.breakdown,
             timestamp: Date.now()
         });
     }
@@ -77,9 +103,15 @@ const EventAPI = (function () {
 
     function emitBaselineComplete(baselineObject) {
         emit("onBaselineComplete", {
-            wordsPerMinute: baselineObject.wordsPerMinute,
-            averageFixationDuration: baselineObject.averageFixationDuration,
-            blinkRate: baselineObject.blinkRate,
+            baselineWPM: baselineObject.baselineWPM || baselineObject.wordsPerMinute,
+            baselineFixationMs: baselineObject.baselineFixationMs || baselineObject.averageFixationDuration,
+            baselineBlinkRate: baselineObject.baselineBlinkRate || baselineObject.blinkRate,
+            wordsPerMinute: baselineObject.wordsPerMinute || baselineObject.baselineWPM,
+            averageFixationDuration: baselineObject.averageFixationDuration || baselineObject.baselineFixationMs,
+            blinkRate: baselineObject.blinkRate || baselineObject.baselineBlinkRate,
+            durationSeconds: baselineObject.durationSeconds,
+            totalFixations: baselineObject.totalFixations,
+            wordsRead: baselineObject.wordsRead,
             timestamp: Date.now()
         });
     }
@@ -101,6 +133,8 @@ const EventAPI = (function () {
         off: off,
         emitGazeUpdate: emitGazeUpdate,
         emitCalibrationComplete: emitCalibrationComplete,
+        emitCalibrationQualityLive: emitCalibrationQualityLive,
+        emitSignalQualityUpdate: emitSignalQualityUpdate,
         emitFaceQualityChange: emitFaceQualityChange,
         emitRecalibrationNeeded: emitRecalibrationNeeded,
         emitBaselineComplete: emitBaselineComplete,
