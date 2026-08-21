@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Adaptive Reader — AI for Dyslexia</title>
+    <meta name="description" content="AI-powered reading companion for dyslexia. Real-time gaze tracking, adaptive typography, and contextual AI assistance." />
+  </head>
+  <body>
+
+    <!-- ================================================================ -->
+    <!-- CV PIPELINE — must load as plain <script> (window globals)       -->
+    <!-- Served from /cv/ which maps to adaptive-reader-cv/ via Vite      -->
+    <!-- ================================================================ -->
+
+    <!-- WebGazer eye tracker (self-hosted) -->
+    <script src="/cv/webgazer.js"></script>
+
+    <!-- MediaPipe WASM bootstrap promise -->
+    <script>
+      window.mediapipeReadyResolve = null;
+      window.mediapipeReadyPromise = new Promise(function (resolve) {
+        window.mediapipeReadyResolve = resolve;
+        setTimeout(resolve, 3000); // failsafe
+      });
+    </script>
+
+    <!-- MediaPipe Tasks-Vision bundle (local first, CDN fallback) -->
+    <script type="module">
+      try {
+        const m = await import(/* @vite-ignore */ "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js");
+        window.FaceLandmarker = m.FaceLandmarker;
+        window.FilesetResolver = m.FilesetResolver;
+      } catch (e) {
+        console.warn("[CV] MediaPipe bundle failed:", e);
+      }
+      if (typeof window.mediapipeReadyResolve === "function") {
+        window.mediapipeReadyResolve();
+      }
+    </script>
+
+    <!-- CV sub-modules (order matters — dependency chain) -->
+    <script src="/cv/src/event-api.js"></script>
+    <script src="/cv/src/camera-manager.js"></script>
+    <script src="/cv/src/mediapipe-engine.js"></script>
+    <script src="/cv/src/confidence-gate.js"></script>
+    <script src="/cv/src/gaze-pipeline.js"></script>
+    <script src="/cv/src/dom-mapper.js"></script>
+    <script src="/cv/src/calibration-ui.js"></script>
+    <script src="/cv/src/baseline-capture.js"></script>
+    <script src="/cv/src/main.js"></script>
+    <script src="/cv/src/reading-state-engine.js"></script>
+    <script src="/cv/src/difficulty-engine.js"></script>
+    <script src="/cv/src/adaptation-contract.js"></script>
+
+    <!-- CV gaze cursor elements (used by DOM mapper & CV pipeline) -->
+    <div id="raw-gaze-cursor" style="position:fixed;width:8px;height:8px;border-radius:50%;background:rgba(255,100,100,0.6);pointer-events:none;z-index:99998;display:none;transform:translate(-50%,-50%);"></div>
+    <div id="gaze-cursor" style="position:fixed;width:14px;height:14px;border-radius:50%;background:rgba(95,168,211,0.75);border:2px solid white;pointer-events:none;z-index:99999;display:none;transform:translate(-50%,-50%);box-shadow:0 0 8px rgba(95,168,211,0.8);"></div>
+
+    <!-- React app -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

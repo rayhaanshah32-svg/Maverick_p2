@@ -10,17 +10,21 @@ const CameraManager = (function () {
             return sharedStream;
         }
 
-        const constraints = {
-            video: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                frameRate: { ideal: 30, max: 30 },
-                facingMode: "user"
-            },
-            audio: false
-        };
-
-        sharedStream = await navigator.mediaDevices.getUserMedia(constraints);
+        try {
+            sharedStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: "user"
+                },
+                audio: false
+            });
+        } catch (error) {
+            sharedStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false
+            });
+        }
 
         videoElement = document.getElementById("shared-camera-feed");
         if (!videoElement) {
@@ -40,10 +44,27 @@ const CameraManager = (function () {
         videoElement.srcObject = sharedStream;
 
         await new Promise(function (resolve) {
-            videoElement.onloadedmetadata = function () {
-                videoElement.play();
-                resolve();
-            };
+            function completePlay() {
+                videoElement.play().then(function () {
+                    resolve();
+                }).catch(function () {
+                    resolve();
+                });
+            }
+
+            if (videoElement.readyState >= 1) {
+                completePlay();
+            } else {
+                videoElement.onloadedmetadata = function () {
+                    completePlay();
+                };
+                videoElement.onloadeddata = function () {
+                    completePlay();
+                };
+                setTimeout(function () {
+                    completePlay();
+                }, 800);
+            }
         });
 
         isReady = true;

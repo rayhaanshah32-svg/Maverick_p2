@@ -1,0 +1,5 @@
+This is a simple text file.
+
+It contains a second paragraph for reading tests.
+
+Third paragraph has more text to verify word counting.

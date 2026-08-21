@@ -60,6 +60,27 @@
     <div id="main-layout">
 
         <main id="reading-panel">
+            <div id="document-toolbar" style="display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 10px 14px; background: rgba(20, 22, 44, 0.85); border: 1px solid var(--color-border); border-radius: 8px;">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <label class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin: 0;">
+                        📁 Upload Document
+                        <input type="file" id="doc-file-input" accept=".txt,.pdf,.md" style="display: none;" onchange="handleDocumentUpload(event)" />
+                    </label>
+                    <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="loadDemoPassage('hackathon_story')">
+                        📖 Load Demo Story (3-Phase)
+                    </button>
+                    <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="loadDemoPassage('default')">
+                        ↺ Default Passage
+                    </button>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="btn btn-warning" id="btn-proactive-assist" style="padding: 6px 12px; font-size: 12px;" onclick="triggerProactiveAssistAction()">
+                        🤖 Proactive AI Assist
+                    </button>
+                    <span id="doc-stats-label" style="font-size: 11px; color: var(--color-text-muted);">260 words | 4 paragraphs</span>
+                </div>
+            </div>
+
             <div id="text-container">
 
                 <p class="paragraph" id="paragraph-0">
@@ -188,6 +209,37 @@
                 </div>
             </div>
 
+            <div class="sidebar-card" id="person-b-card">
+                <div class="sidebar-card-title">Reading Intelligence</div>
+                <div class="metric-row">
+                    <span class="metric-label">Friction Score</span>
+                    <span class="metric-value" id="pib-score">—</span>
+                </div>
+                <div class="progress-bar-track" style="margin: 4px 0 8px;">
+                    <div class="progress-bar-fill" id="pib-score-bar" style="background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);"></div>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">State</span>
+                    <span class="metric-value" id="pib-state">—</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Current WPM</span>
+                    <span class="metric-value" id="pib-wpm">—</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Fixation</span>
+                    <span class="metric-value" id="pib-fixation">—</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Regressions</span>
+                    <span class="metric-value" id="pib-regressions">—</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Evidence</span>
+                    <span class="metric-value" id="pib-evidence" style="font-size: 11px; max-width: 130px; text-align: right; line-height: 1.4;">—</span>
+                </div>
+            </div>
+
             <div class="sidebar-card">
                 <div class="sidebar-card-title">Event Log</div>
                 <div id="event-log"></div>
@@ -238,6 +290,55 @@
                 <button class="btn btn-secondary" style="padding: 3px 8px; font-size: 11px;" onclick="logCurrentProfile()">Log to Console</button>
             </div>
         </div>
+        <div style="margin-top: 10px; border-top: 1px solid var(--color-border); padding-top: 8px;">
+            <div style="font-size: 11px; font-weight: 700; color: var(--color-text-muted); margin-bottom: 6px; letter-spacing: 0.05em;">READING FRICTION DIAGNOSTIC</div>
+            <div class="metric-row" style="margin-bottom: 4px;">
+                <span class="metric-label" style="font-size: 11px;">TOTAL FRICTION</span>
+                <span class="metric-value" id="diag-total" style="font-size: 11px; font-weight: 700;">—</span>
+            </div>
+            <div id="diag-total-bar-track" style="height: 8px; background: #1e2035; border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
+                <div id="diag-total-bar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444); transition: width 0.4s ease;"></div>
+            </div>
+            <div id="diag-regression-row" class="metric-row" style="margin-bottom: 3px;">
+                <span style="font-size: 10px; color: var(--color-text-muted); width: 110px;">Regression</span>
+                <span id="diag-regression-bar-wrap" style="flex: 1; height: 6px; background: #1e2035; border-radius: 3px; overflow: hidden; margin: 0 6px;">
+                    <div id="diag-regression-bar" style="height: 100%; width: 0%; background: #ef4444; transition: width 0.4s ease;"></div>
+                </span>
+                <span id="diag-regression-val" style="font-size: 10px; color: #f0f2ff; width: 40px; text-align: right;">—</span>
+            </div>
+            <div id="diag-fixation-row" class="metric-row" style="margin-bottom: 3px;">
+                <span style="font-size: 10px; color: var(--color-text-muted); width: 110px;">Fixation</span>
+                <span id="diag-fixation-bar-wrap" style="flex: 1; height: 6px; background: #1e2035; border-radius: 3px; overflow: hidden; margin: 0 6px;">
+                    <div id="diag-fixation-bar" style="height: 100%; width: 0%; background: #f97316; transition: width 0.4s ease;"></div>
+                </span>
+                <span id="diag-fixation-val" style="font-size: 10px; color: #f0f2ff; width: 40px; text-align: right;">—</span>
+            </div>
+            <div id="diag-speed-row" class="metric-row" style="margin-bottom: 3px;">
+                <span style="font-size: 10px; color: var(--color-text-muted); width: 110px;">Speed</span>
+                <span id="diag-speed-bar-wrap" style="flex: 1; height: 6px; background: #1e2035; border-radius: 3px; overflow: hidden; margin: 0 6px;">
+                    <div id="diag-speed-bar" style="height: 100%; width: 0%; background: #f59e0b; transition: width 0.4s ease;"></div>
+                </span>
+                <span id="diag-speed-val" style="font-size: 10px; color: #f0f2ff; width: 40px; text-align: right;">—</span>
+            </div>
+            <div id="diag-dwell-row" class="metric-row" style="margin-bottom: 3px;">
+                <span style="font-size: 10px; color: var(--color-text-muted); width: 110px;">Dwell / Pause</span>
+                <span id="diag-dwell-bar-wrap" style="flex: 1; height: 6px; background: #1e2035; border-radius: 3px; overflow: hidden; margin: 0 6px;">
+                    <div id="diag-dwell-bar" style="height: 100%; width: 0%; background: #a78bfa; transition: width 0.4s ease;"></div>
+                </span>
+                <span id="diag-dwell-val" style="font-size: 10px; color: #f0f2ff; width: 40px; text-align: right;">—</span>
+            </div>
+            <div id="diag-instability-row" class="metric-row" style="margin-bottom: 3px;">
+                <span style="font-size: 10px; color: var(--color-text-muted); width: 110px;">Instability</span>
+                <span id="diag-instability-bar-wrap" style="flex: 1; height: 6px; background: #1e2035; border-radius: 3px; overflow: hidden; margin: 0 6px;">
+                    <div id="diag-instability-bar" style="height: 100%; width: 0%; background: #60a5fa; transition: width 0.4s ease;"></div>
+                </span>
+                <span id="diag-instability-val" style="font-size: 10px; color: #f0f2ff; width: 40px; text-align: right;">—</span>
+            </div>
+            <div style="margin-top: 6px;">
+                <span style="font-size: 9px; color: var(--color-text-muted);">z-scores: </span>
+                <span id="diag-zscores" style="font-size: 9px; color: #7986cb;">—</span>
+            </div>
+        </div>
     </div>
 
     <script src="webgazer.js"></script>
@@ -246,14 +347,28 @@
         window.mediapipeReadyResolve = null;
         window.mediapipeReadyPromise = new Promise(function (resolve) {
             window.mediapipeReadyResolve = resolve;
+            setTimeout(resolve, 2500);
         });
     </script>
 
     <script type="module">
-        import { FaceLandmarker, FilesetResolver } from "./mediapipe/tasks-vision-wasm/vision_bundle.mjs";
-        window.FaceLandmarker = FaceLandmarker;
-        window.FilesetResolver = FilesetResolver;
-        window.mediapipeReadyResolve();
+        try {
+            const visionModule = await import("./mediapipe/tasks-vision-wasm/vision_bundle.js");
+            window.FaceLandmarker = visionModule.FaceLandmarker;
+            window.FilesetResolver = visionModule.FilesetResolver;
+        } catch (error) {
+            console.warn("Falling back to online bundle:", error);
+            try {
+                const cdnModule = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js");
+                window.FaceLandmarker = cdnModule.FaceLandmarker;
+                window.FilesetResolver = cdnModule.FilesetResolver;
+            } catch (cdnError) {
+                console.error("Unable to load MediaPipe bundle:", cdnError);
+            }
+        }
+        if (typeof window.mediapipeReadyResolve === "function") {
+            window.mediapipeReadyResolve();
+        }
     </script>
 
     <script src="src/event-api.js"></script>
@@ -265,6 +380,10 @@
     <script src="src/calibration-ui.js"></script>
     <script src="src/baseline-capture.js"></script>
     <script src="src/main.js"></script>
+    <script src="src/reading-state-engine.js"></script>
+    <script src="src/difficulty-engine.js"></script>
+    <script src="src/adaptation-contract.js"></script>
+    <script src="src/reading-intelligence-tests.js"></script>
 
     <script>
 
@@ -438,7 +557,120 @@
                 "event"
             );
             document.getElementById("btn-start-baseline").textContent = "✓ Baseline Done";
+
+            ReadingIntelligence.start();
+            appendToLog("READING INTELLIGENCE started", "event");
         });
+
+        ReadingIntelligence.on("onReadingStateUpdate", function (data) {
+            var scoreEl = document.getElementById("pib-score");
+            var barEl = document.getElementById("pib-score-bar");
+            var stateEl = document.getElementById("pib-state");
+            var wpmEl = document.getElementById("pib-wpm");
+            var fixationEl = document.getElementById("pib-fixation");
+            var regressionsEl = document.getElementById("pib-regressions");
+            var evidenceEl = document.getElementById("pib-evidence");
+
+            if (scoreEl) { scoreEl.textContent = data.smoothedScore; }
+            if (barEl) { barEl.style.width = data.smoothedScore + "%"; }
+
+            if (stateEl) {
+                stateEl.textContent = data.state;
+                stateEl.className = "metric-value";
+                if (data.state === "FLOW") { stateEl.style.color = "#10b981"; }
+                else if (data.state === "MILD_FRICTION") { stateEl.style.color = "#f59e0b"; }
+                else if (data.state === "HIGH_FRICTION") { stateEl.style.color = "#f97316"; }
+                else if (data.state === "ASSIST") { stateEl.style.color = "#ef4444"; }
+            }
+
+            if (wpmEl) {
+                wpmEl.textContent = data.currentWPM > 0
+                    ? data.currentWPM + " / " + data.baselineWPM + " WPM"
+                    : "—";
+            }
+            if (fixationEl) {
+                fixationEl.textContent = data.fixationMs > 0
+                    ? data.fixationMs + " ms (base: " + data.baselineFixationMs + ")"
+                    : "—";
+            }
+            if (regressionsEl) {
+                regressionsEl.textContent = data.regressions + " recent";
+            }
+            if (evidenceEl) {
+                evidenceEl.textContent = data.evidence.length > 0
+                    ? data.evidence.join(", ")
+                    : "none";
+            }
+
+            var diagTotal = document.getElementById("diag-total");
+            var diagTotalBar = document.getElementById("diag-total-bar");
+            if (diagTotal) { diagTotal.textContent = data.smoothedScore + " / 100"; }
+            if (diagTotalBar) { diagTotalBar.style.width = data.smoothedScore + "%"; }
+
+            if (data.allContributions && data.allContributions.length > 0) {
+                var zScoresStr = [];
+                for (var ci = 0; ci < data.allContributions.length; ci++) {
+                    var item = data.allContributions[ci];
+                    zScoresStr.push(item.feature.slice(0, 4) + ": " + (item.zScore >= 0 ? "+" : "") + item.zScore);
+
+                    var barRatio = item.maxContribution > 0 ? (item.contribution / item.maxContribution) * 100 : 0;
+
+                    if (item.feature === "regression_rate") {
+                        var regVal = document.getElementById("diag-regression-val");
+                        var regBar = document.getElementById("diag-regression-bar");
+                        if (regVal) { regVal.textContent = item.contribution + " / " + item.maxContribution; }
+                        if (regBar) { regBar.style.width = barRatio + "%"; }
+                    } else if (item.feature === "fixation_anomaly") {
+                        var fixVal = document.getElementById("diag-fixation-val");
+                        var fixBar = document.getElementById("diag-fixation-bar");
+                        if (fixVal) { fixVal.textContent = item.contribution + " / " + item.maxContribution; }
+                        if (fixBar) { fixBar.style.width = barRatio + "%"; }
+                    } else if (item.feature === "reading_speed_slowdown") {
+                        var spdVal = document.getElementById("diag-speed-val");
+                        var spdBar = document.getElementById("diag-speed-bar");
+                        if (spdVal) { spdVal.textContent = item.contribution + " / " + item.maxContribution; }
+                        if (spdBar) { spdBar.style.width = barRatio + "%"; }
+                    } else if (item.feature === "dwell_pause_anomaly") {
+                        var dwVal = document.getElementById("diag-dwell-val");
+                        var dwBar = document.getElementById("diag-dwell-bar");
+                        if (dwVal) { dwVal.textContent = item.contribution + " / " + item.maxContribution; }
+                        if (dwBar) { dwBar.style.width = barRatio + "%"; }
+                    } else if (item.feature === "line_transition_instability") {
+                        var insVal = document.getElementById("diag-instability-val");
+                        var insBar = document.getElementById("diag-instability-bar");
+                        if (insVal) { insVal.textContent = item.contribution + " / " + item.maxContribution; }
+                        if (insBar) { insBar.style.width = barRatio + "%"; }
+                    }
+                }
+                var diagZ = document.getElementById("diag-zscores");
+                if (diagZ) { diagZ.textContent = zScoresStr.join(" | "); }
+            }
+        });
+
+        ReadingIntelligence.on("onAdaptationRecommendation", function (data) {
+            appendToLog(
+                "ADAPT [" + data.state + "] " + data.action +
+                " — " + data.reason.join(", ") +
+                " (score: " + data.difficulty + ")",
+                "warn"
+            );
+            console.log("[ReadingIntelligence] Adaptation:", data);
+        });
+
+        ReadingIntelligence.on("onFixationDetected", function (data) {
+        });
+
+        ReadingIntelligence.on("onRegressionDetected", function (data) {
+            appendToLog(
+                "REGRESSION line " + data.fromLine + " → " + data.toLine +
+                " (total: " + data.totalRegressions + ")",
+                "event"
+            );
+        });
+
+        window.runReadingIntelligenceTests = function () {
+            return ReadingIntelligenceTests.runAll();
+        };
 
         function handleManualRecalibration() {
             AdaptiveReaderCV.triggerManualRecalibration();
@@ -489,6 +721,100 @@
             appendToLog("Calibration profile logged to DevTools console", "event");
         }
 
+        function renderTextToContainer(paragraphsArray) {
+            const container = document.getElementById("text-container");
+            container.innerHTML = "";
+
+            let totalWords = 0;
+            let lineWordEstimates = [];
+
+            for (let i = 0; i < paragraphsArray.length; i++) {
+                const text = paragraphsArray[i].trim();
+                if (!text) continue;
+
+                const p = document.createElement("p");
+                p.className = "paragraph";
+                p.id = "paragraph-" + i;
+                p.textContent = text;
+                container.appendChild(p);
+
+                const words = text.split(/\s+/).filter(Boolean).length;
+                totalWords += words;
+            }
+
+            const statsLabel = document.getElementById("doc-stats-label");
+            if (statsLabel) {
+                statsLabel.textContent = totalWords + " words | " + paragraphsArray.length + " paragraphs";
+            }
+
+            AdaptiveReaderCV.refreshTextRegion();
+            ReadingIntelligence.setDocumentWordCount(totalWords, paragraphsArray.length * 4);
+            appendToLog("DOCUMENT LOADED: " + totalWords + " words in " + paragraphsArray.length + " paragraphs", "event");
+        }
+
+        function handleDocumentUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const content = e.target.result;
+                const rawParagraphs = content.split(/\n\s*\n/).filter(function (p) { return p.trim().length > 0; });
+                if (rawParagraphs.length > 0) {
+                    renderTextToContainer(rawParagraphs);
+                } else {
+                    renderTextToContainer([content]);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        const DEMO_STORIES = {
+            hackathon_story: [
+                "Reading begins with effortless sensory synchronization. Visual saccades sweep fluidly from left to right as phonemes and semantics are extracted with high automaticity.",
+                "In contradistinction to conventional phonological orthography, the neuroanatomical heterogeneities of developmental dyslexia instantiate multidimensional processing bottlenecks, necessitating instantaneous polymorphic visual scaffolding and adaptive typography to mitigate perceptual crowding.",
+                "Once contextual scaffolding and focus isolation are introduced, cognitive load rapidly diminishes. The reader's ocular trajectory stabilizes into smooth forward progression, restoring cognitive flow."
+            ],
+            default: [
+                "Reading is one of the most complex cognitive tasks humans perform. It requires the simultaneous coordination of eye movements, working memory, language processing, and attention — all happening in a fraction of a second. For people with dyslexia, this process is significantly harder, not because of intelligence, but because of how their brain processes text.",
+                "Eye tracking technology offers a window into the reading process that was previously only available to researchers in lab settings. Today, webcam-based systems like WebGazer can approximate gaze position with enough accuracy to track which line of text a person is reading — without any special hardware, just a standard laptop camera.",
+                "The Adaptive Reader uses this signal to detect when a reader is struggling — revisiting the same line repeatedly, reading unusually slowly, or losing their place — and automatically adjusts the display: larger fonts, wider spacing, highlighted focus lines, and simplified text when needed. All of this happens in real time, invisibly.",
+                "The key insight behind this system is that gaze tracking does not need to be word-perfect to be useful. Knowing which line a person is on is enough to provide meaningful, contextual support. This approach is both technically achievable with today's webcam hardware and meaningfully impactful for readers who need it most."
+            ]
+        };
+
+        function loadDemoPassage(type) {
+            const story = DEMO_STORIES[type] || DEMO_STORIES.default;
+            renderTextToContainer(story);
+            if (type === "hackathon_story") {
+                appendToLog("Loaded 3-Phase Hackathon Demo Passage (Flow → Deliberate Friction → Recovery)", "warn");
+            }
+        }
+
+        function triggerProactiveAssistAction() {
+            const metrics = ReadingIntelligence.getCurrentMetrics();
+            const targetLine = metrics.currentLine >= 0 ? metrics.currentLine : 0;
+            ReadingIntelligence.triggerProactiveAssist(targetLine, "OFFER_SIMPLIFICATION");
+            appendToLog("PROACTIVE ASSIST manually triggered for line " + targetLine, "warn");
+        }
+
+        ReadingIntelligence.on("onProactiveAssistStatusChange", function (data) {
+            const btn = document.getElementById("btn-proactive-assist");
+            if (btn) {
+                if (data.active) {
+                    btn.className = "btn btn-primary";
+                    btn.textContent = "🤖 Proactive AI (Active)";
+                } else {
+                    btn.className = "btn btn-warning";
+                    btn.textContent = "🤖 Proactive AI Assist";
+                }
+            }
+            appendToLog("PROACTIVE ASSIST: " + data.message, "warn");
+        });
+
+        window.handleDocumentUpload = handleDocumentUpload;
+        window.loadDemoPassage = loadDemoPassage;
+        window.triggerProactiveAssistAction = triggerProactiveAssistAction;
         window.handleManualRecalibration = handleManualRecalibration;
         window.handleQuickRecalibration = handleQuickRecalibration;
         window.handleStartBaseline = handleStartBaseline;
@@ -504,7 +830,11 @@
             loadingErrorActions.style.display = "none";
 
             try {
-                await AdaptiveReaderCV.initialize();
+                ReadingIntelligence.initialize();
+
+                await AdaptiveReaderCV.initialize(function (status) {
+                    loadingStatusText.textContent = status;
+                });
             } catch (error) {
                 console.error("[Boot] Fatal error:", error);
                 loadingSpinner.style.display = "none";

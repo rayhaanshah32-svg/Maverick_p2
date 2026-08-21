@@ -95,7 +95,6 @@ const GazePipeline = (function () {
 
         if (smoothedPoint) {
             lastKnownGoodPoint = smoothedPoint;
-            checkForDrift(smoothedPoint);
 
             const lineMapping = DOMMapper.findLineAtPoint(smoothedPoint.x, smoothedPoint.y);
 
