@@ -1,20 +1,30 @@
-from extractor import extract_pdf
+from extractor import extract_text
 
 
-pdf_file = "test.pdf"
+def test_file(file_path):
+    print("\n" + "=" * 70)
+    print("FILE:", file_path)
+    print("=" * 70)
 
-results = extract_pdf(pdf_file)
+    try:
+        text = extract_text(file_path)
+
+        if text:
+            print("\nEXTRACTED TEXT:\n")
+            print(text)
+        else:
+            print("\nNo text was detected.")
+
+    except Exception as e:
+        print("\nERROR:")
+        print(e)
 
 
-print()
-print("TOTAL PARAGRAPHS:", len(results))
-print()
+# Test PDF
+test_file("test.pdf")
 
+# Test PowerPoint
+test_file("test.pptx")
 
-for item in results:
-
-    print("ID:", item["id"])
-    print("PAGE:", item["page"])
-    print("-" * 50)
-    print(item["text"])
-    print()
+# Test Image
+test_file("test.jpg")

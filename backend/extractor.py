@@ -1,89 +1,89 @@
-import pymupdf
-
+import os
+from pypdf import PdfReader
 from pptx import Presentation
+from PIL import Image
+import pytesseract
 
-from cleaner import split_into_paragraphs
+
+# Tesseract path for Windows
+pytesseract.pytesseract.tesseract_cmd = (
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+)
 
 
 def extract_pdf(file_path):
-    """
-    Extract text from a PDF and convert it
-    into structured paragraphs.
-    """
+    """Extract text from PDF."""
+    reader = PdfReader(file_path)
 
-    results = []
+    text = []
 
-    document = pymupdf.open(file_path)
+    for page_number, page in enumerate(reader.pages, start=1):
+        page_text = page.extract_text()
 
-    paragraph_id = 1
+        if page_text:
+            text.append(f"\n--- PAGE {page_number} ---\n")
+            text.append(page_text)
 
-    for page_number, page in enumerate(
-        document,
-        start=1
-    ):
-
-        text = page.get_text("text")
-
-        if text.strip():
-
-            paragraphs = split_into_paragraphs(text)
-
-            for paragraph in paragraphs:
-
-                results.append({
-                    "id": paragraph_id,
-                    "page": page_number,
-                    "text": paragraph
-                })
-
-                paragraph_id += 1
-
-    document.close()
-
-    return results
+    return "\n".join(text).strip()
 
 
-def extract_ppt(file_path):
-    """
-    Extract text from PPT/PPTX slide by slide.
-    """
-
-    results = []
-
+def extract_pptx(file_path):
+    """Extract text from PPT/PPTX."""
     presentation = Presentation(file_path)
 
-    paragraph_id = 1
+    text = []
 
     for slide_number, slide in enumerate(
-        presentation.slides,
-        start=1
+        presentation.slides, start=1
     ):
-
         slide_text = []
 
         for shape in slide.shapes:
-
             if hasattr(shape, "text"):
+                if shape.text.strip():
+                    slide_text.append(shape.text.strip())
 
-                text = shape.text.strip()
+        if slide_text:
+            text.append(
+                f"\n--- SLIDE {slide_number} ---\n"
+            )
+            text.append("\n".join(slide_text))
 
-                if text:
-                    slide_text.append(text)
+    return "\n".join(text).strip()
 
-        combined_text = "\n".join(slide_text)
 
-        paragraphs = split_into_paragraphs(
-            combined_text
+def extract_image(file_path):
+    """Extract text from JPG/JPEG/PNG using Tesseract OCR."""
+    image = Image.open(file_path)
+
+    text = pytesseract.image_to_string(image)
+
+    return text.strip()
+
+
+def extract_text(file_path):
+    """
+    Automatically detect the file type
+    and extract its text.
+    """
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(
+            f"File not found: {file_path}"
         )
 
-        for paragraph in paragraphs:
+    extension = os.path.splitext(file_path)[1].lower()
 
-            results.append({
-                "id": paragraph_id,
-                "slide": slide_number,
-                "text": paragraph
-            })
+    if extension == ".pdf":
+        return extract_pdf(file_path)
 
-            paragraph_id += 1
+    elif extension in [".ppt", ".pptx"]:
+        return extract_pptx(file_path)
 
-    return results
+    elif extension in [".jpg", ".jpeg", ".png"]:
+        return extract_image(file_path)
+
+    else:
+        raise ValueError(
+            f"Unsupported file type: {extension}"
+        )
