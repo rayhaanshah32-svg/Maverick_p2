@@ -9,6 +9,8 @@ import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
 import JSZip from "jszip";
 import Tesseract from "tesseract.js";
+import { useCV } from "./useCV.js";
+import { useOllama } from "./useOllama.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -437,14 +439,27 @@ const ANNOTATION_TYPE_LABELS = {
 
 function ContextualAssistPanel({ word, annotation, onDismiss, tts }) {
   if (!word) return null;
-  const { ttsState, speak, speakSentence } = tts;
+  const { ttsState, speak, speakSentence } = tts || {};
   const isSpeaking = ttsState === "speaking" || ttsState === "paused";
-  const displayText = annotation?.explanation
-    || DEFAULT_DEFINITIONS[word.clean]
+  
+  const ollama = useOllama();
+  const [aiText, setAiText] = useState(null);
+
+  const cleanWord = word?.clean || word?.text?.replace(/[^a-zA-Z]/g, "") || "";
+  const displayText = aiText?.text
+    || annotation?.explanation
+    || DEFAULT_DEFINITIONS[cleanWord]
     || "No plain-language note available for this word.";
-  const simpleText = annotation?.explanation
-    ? `In simple terms: ${annotation.explanation}`
-    : `This word (${word.clean}) appears in this passage and may be worth noting.`;
+
+  const handleAskDefine = async () => {
+    const res = await ollama.askDefine(cleanWord);
+    if (res) setAiText({ label: "Definition (Qwen2.5)", text: res });
+  };
+
+  const handleAskSimplify = async () => {
+    const res = await ollama.askSimplify(word?.text || cleanWord);
+    if (res) setAiText({ label: "Simplified (Qwen2.5)", text: res });
+  };
 
   return (
     <div
@@ -452,8 +467,8 @@ function ContextualAssistPanel({ word, annotation, onDismiss, tts }) {
       style={{
         marginTop: 28,
         borderRadius: 14,
-        background: "rgba(255,255,255,0.82)",
-        border: `1px solid rgba(30,58,95,0.18)`,
+        background: "rgba(255,255,255,0.88)",
+        border: `1px solid rgba(30,58,95,0.22)`,
         backdropFilter: "blur(18px) saturate(1.2)",
         WebkitBackdropFilter: "blur(18px) saturate(1.2)",
         boxShadow: "0 8px 28px rgba(30,58,95,0.14)",
@@ -475,7 +490,7 @@ function ContextualAssistPanel({ word, annotation, onDismiss, tts }) {
             fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6,
             color: annotation ? NAVY : AMBER,
           }}>
-            {annotation ? (ANNOTATION_TYPE_LABELS[annotation.type] || "Note") : "Contextual Assist"}
+            {aiText ? aiText.label : annotation ? (ANNOTATION_TYPE_LABELS[annotation.type] || "Note") : "Contextual Assist"}
           </div>
           <span style={{ fontSize: 14, fontWeight: 700, color: NAVY }}>
             "{word.text.replace(/[^a-zA-Z\-']/g, "")}"
@@ -498,7 +513,7 @@ function ContextualAssistPanel({ word, annotation, onDismiss, tts }) {
         {/* What it means */}
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: MUTED, marginBottom: 4 }}>
-            WHAT IT MEANS
+            PLAIN LANGUAGE DEFINITION
           </div>
           <div style={{ fontSize: 13.5, color: INK, lineHeight: 1.6 }}>
             {displayText}
@@ -506,7 +521,7 @@ function ContextualAssistPanel({ word, annotation, onDismiss, tts }) {
         </div>
 
         {/* Simpler explanation */}
-        {annotation?.reason && (
+        {annotation?.reason && !aiText && (
           <div style={{
             background: "rgba(95,168,211,0.10)", borderRadius: 8,
             padding: "8px 12px", fontSize: 12.5, color: NAVY, lineHeight: 1.5,
@@ -516,56 +531,51 @@ function ContextualAssistPanel({ word, annotation, onDismiss, tts }) {
           </div>
         )}
 
-        {/* TTS Controls */}
+        {ollama.ollamaStatus === "loading" && (
+          <div style={{ fontSize: 12, color: AMBER, display: "flex", alignItems: "center", gap: 6 }}>
+            <RefreshCw size={12} className="spin" /> Asking local Qwen2.5 LLM…
+          </div>
+        )}
+
+        {/* TTS & AI Controls */}
         <div style={{ display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
-          {!isSpeaking ? (
-            <>
-              <button
-                onClick={() => speak(word.clean)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
-                  color: "#fff", background: NAVY, border: "none", borderRadius: 8,
-                  padding: "6px 14px", cursor: "pointer",
-                }}
-              >
-                <Volume2 size={13} /> Listen to word
-              </button>
-              <button
-                onClick={() => speakSentence(word.id, null)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
-                  color: NAVY, background: "rgba(30,58,95,0.08)", border: "1px solid rgba(30,58,95,0.20)",
-                  borderRadius: 8, padding: "6px 14px", cursor: "pointer",
-                }}
-              >
-                <Volume2 size={13} /> Read paragraph
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={ttsState === "paused" ? tts.resume : tts.pause}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
-                  color: "#fff", background: ttsState === "paused" ? SAGE : AMBER,
-                  border: "none", borderRadius: 8, padding: "6px 14px", cursor: "pointer",
-                }}
-              >
-                {ttsState === "paused" ? <Play size={13} /> : <Pause size={13} />}
-                {ttsState === "paused" ? "Resume" : "Pause"}
-              </button>
-              <button
-                onClick={tts.stop}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
-                  color: MUTED, background: "transparent", border: "1px solid rgba(0,0,0,0.12)",
-                  borderRadius: 8, padding: "6px 12px", cursor: "pointer",
-                }}
-              >
-                <X size={12} /> Stop
-              </button>
-            </>
+          {speak && (
+            <button
+              onClick={() => speak(cleanWord)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
+                color: "#fff", background: NAVY, border: "none", borderRadius: 8,
+                padding: "6px 14px", cursor: "pointer",
+              }}
+            >
+              <Volume2 size={13} /> Read Word
+            </button>
           )}
+
+          <button
+            onClick={handleAskDefine}
+            disabled={ollama.ollamaStatus === "loading"}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
+              color: NAVY, background: "rgba(95,168,211,0.15)", border: "1px solid rgba(95,168,211,0.30)",
+              borderRadius: 8, padding: "6px 14px", cursor: "pointer",
+            }}
+          >
+            <Sparkles size={13} color={SKY} /> Define (Ollama)
+          </button>
+
+          <button
+            onClick={handleAskSimplify}
+            disabled={ollama.ollamaStatus === "loading"}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
+              color: BROWN, background: "rgba(232,163,61,0.18)", border: "1px solid rgba(232,163,61,0.35)",
+              borderRadius: 8, padding: "6px 14px", cursor: "pointer",
+            }}
+          >
+            <Zap size={13} color={AMBER} /> Simplify (Ollama)
+          </button>
+
           <button
             onClick={onDismiss}
             style={{
@@ -581,6 +591,7 @@ function ContextualAssistPanel({ word, annotation, onDismiss, tts }) {
     </div>
   );
 }
+
 
 /* ------------------------------------------------------------------ */
 /* Sky-blue liquid glass overlay — blurred orbs + floating curved glass panels */
@@ -958,7 +969,7 @@ const ACCEPT_LIST = ".txt,.md,.markdown,.rtf,.pdf,.pptx,.png,.jpg,.jpeg,.gif,.we
 /* ------------------------------------------------------------------ */
 /* Landing screen                                                      */
 /* ------------------------------------------------------------------ */
-function Landing({ onOpen, onPickFromHistory }) {
+function Landing({ onOpen, onPickFromHistory, onLoadDemo }) {
   const fileRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1050,20 +1061,36 @@ function Landing({ onOpen, onPickFromHistory }) {
           style={{ display: "none" }}
           onChange={(e) => readFile(e.target.files?.[0])}
         />
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={busy}
-          style={{
-            marginTop: 24,
-            display: "inline-flex", alignItems: "center", gap: 8,
-            background: busy ? MUTED : NAVY, color: "#fff", border: "none", borderRadius: 10,
-            padding: "12px 22px", fontSize: 14, fontWeight: 700,
-            fontFamily: "Calibri, sans-serif", cursor: busy ? "wait" : "pointer",
-            boxShadow: "0 6px 18px rgba(30,58,95,0.25)",
-          }}
-        >
-          <Upload size={16} /> {busy ? "Reading file…" : "Choose a file"}
-        </button>
+        <div style={{ marginTop: 24, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              background: busy ? MUTED : NAVY, color: "#fff", border: "none", borderRadius: 10,
+              padding: "12px 22px", fontSize: 14, fontWeight: 700,
+              fontFamily: "Calibri, sans-serif", cursor: busy ? "wait" : "pointer",
+              boxShadow: "0 6px 18px rgba(30,58,95,0.25)",
+            }}
+          >
+            <Upload size={16} /> {busy ? "Reading file…" : "Choose a file"}
+          </button>
+          {onLoadDemo && (
+            <button
+              onClick={onLoadDemo}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                background: "rgba(95,168,211,0.20)", color: NAVY,
+                border: "1px solid rgba(95,168,211,0.50)", borderRadius: 10,
+                padding: "12px 22px", fontSize: 14, fontWeight: 700,
+                fontFamily: "Calibri, sans-serif", cursor: "pointer",
+              }}
+            >
+              <BookOpen size={16} color={NAVY} /> Try Demo Passage
+            </button>
+          )}
+        </div>
+
         <div style={{ marginTop: 14, fontSize: 12, color: MUTED }}>
           …or drag and drop one onto this card.
         </div>
@@ -1235,6 +1262,7 @@ function formatRelative(ts) {
   if (d < 7) return `${d}d ago`;
   return new Date(ts).toLocaleDateString();
 }
+
 
 /* ------------------------------------------------------------------ */
 /* Person C Helper Modals & Notification Cards                        */
@@ -1468,7 +1496,7 @@ function SessionInsightsModal({ open, onClose, flowScore, interventionsCount, on
 /* ------------------------------------------------------------------ */
 /* Reader — Pane + Person C Adaptation Engine + Vitals Sidebar       */
 /* ------------------------------------------------------------------ */
-function Reader({ file, onClose, themeMode, setThemeMode, rulerEnabled, setRulerEnabled }) {
+function Reader({ file, onClose, themeMode, setThemeMode, rulerEnabled, setRulerEnabled, selectedFont, cv }) {
   const [phaseIdx, setPhaseIdx] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [cursor, setCursor] = useState(0);
@@ -1487,7 +1515,11 @@ function Reader({ file, onClose, themeMode, setThemeMode, rulerEnabled, setRuler
   const [selectedWord, setSelectedWord] = useState(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [interventionsCount, setInterventionsCount] = useState(0);
-  const [signalQuality, setSignalQuality] = useState(92);
+
+  // Use live CV signal quality when available, fallback to internal state
+  const [signalQualityState, setSignalQualityState] = useState(92);
+  const signalQuality = cv?.signalQuality ?? signalQualityState;
+
   const textContainerRef = useRef(null);
   const lastAdaptationTimeRef = useRef(0);
 
@@ -1684,7 +1716,7 @@ function Reader({ file, onClose, themeMode, setThemeMode, rulerEnabled, setRuler
   const lineHeight = isHighSpacing ? 2.35 : isLightSpacing ? 2.05 : isComfortMode ? 2.15 : isFocusMode ? 2.10 : isStruggling ? 2.15 : 1.85;
   const letterSpacing = isHighSpacing ? "0.035em" : isLightSpacing ? "0.025em" : isComfortMode ? "0.02em" : isFocusMode ? "0.015em" : "normal";
   const wordSpacing = isHighSpacing ? "0.30em" : isLightSpacing ? "0.18em" : isComfortMode ? "0.22em" : isFocusMode ? "0.15em" : "normal";
-  const fontFamily = isComfortMode || isHighSpacing ? "Verdana, Tahoma, sans-serif" : "Calibri, sans-serif";
+  const fontFamily = selectedFont || (isComfortMode || isHighSpacing ? "Verdana, Tahoma, sans-serif" : "Calibri, sans-serif");
   const maxWidth = isHighSpacing ? 640 : isFocusMode ? 680 : 740;
 
   const paraIndexes = useMemo(
@@ -2113,9 +2145,29 @@ function useWebcamStatus() {
 /* ------------------------------------------------------------------ */
 /* Top header — Person C Product Controls                              */
 /* ------------------------------------------------------------------ */
-function TopHeader({ webcam, themeMode, setThemeMode, rulerEnabled, setRulerEnabled, onSimulateFriction, onLoadDemo, onResetSession }) {
+function TopHeader({
+  webcam,
+  cv,
+  themeMode,
+  setThemeMode,
+  rulerEnabled,
+  setRulerEnabled,
+  selectedFont,
+  setSelectedFont,
+  fontOptions,
+  onSimulateFriction,
+  onLoadDemo,
+  onResetSession,
+  onShowCameraSetup,
+}) {
   const camColor = webcam.status === "on" ? SAGE : webcam.status === "off" ? BRICK : AMBER;
   const themes = ["Standard", "Focus", "Comfort", "High Spacing"];
+
+  const cvStatusText = cv?.cvStatus === "ready"
+    ? `Tracking (${cv.signalQuality}%)`
+    : cv?.cvStatus === "calibrating" || cv?.cvStatus === "baseline"
+    ? cv.cvStatusMsg
+    : "Gaze Setup";
 
   return (
     <header style={{
@@ -2149,60 +2201,88 @@ function TopHeader({ webcam, themeMode, setThemeMode, rulerEnabled, setRulerEnab
             Adaptive Reader
           </div>
           <div style={{ fontSize: 10.5, color: "rgba(220,230,240,0.75)", letterSpacing: 0.5 }}>
-            Reading flow companion
+            AI Reading Assistant for Dyslexia
           </div>
         </div>
       </div>
 
-      {/* Reading Theme Selector & Control Pills */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.06)", padding: "4px 8px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: AMBER, marginRight: 4, display: "flex", alignItems: "center", gap: 4 }}>
-          <SlidersHorizontal size={12} /> THEME
-        </span>
-        {themes.map((t) => {
-          const active = themeMode === t;
-          return (
-            <button
-              key={t}
-              onClick={() => setThemeMode(t)}
-              style={{
-                background: active ? "rgba(95,168,211,0.35)" : "transparent",
-                border: `1px solid ${active ? "rgba(95,168,211,0.60)" : "transparent"}`,
-                color: active ? "#FFF" : MUTED_DARK,
-                borderRadius: 7,
-                padding: "4px 10px",
-                fontSize: 11.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 180ms ease",
-              }}
-            >
-              {t}
-            </button>
-          );
-        })}
-        <div style={{ width: 1, height: 16, background: "rgba(255,255,255,0.15)", margin: "0 4px" }} />
-        <button
-          onClick={() => setRulerEnabled(!rulerEnabled)}
-          style={{
-            background: rulerEnabled ? "rgba(232,163,61,0.28)" : "transparent",
-            border: `1px solid ${rulerEnabled ? AMBER : "transparent"}`,
-            color: rulerEnabled ? "#FFF" : MUTED_DARK,
-            borderRadius: 7,
-            padding: "4px 10px",
-            fontSize: 11.5,
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-        >
-          <Layers size={12} color={rulerEnabled ? AMBER : MUTED_DARK} /> Ruler
-        </button>
+      {/* Font Selector & Theme Controls */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Font Selector (Arial / Helvetica / Verdana / OpenDyslexic) */}
+        {fontOptions && setSelectedFont && (
+          <select
+            value={selectedFont}
+            onChange={(e) => setSelectedFont(e.target.value)}
+            title="Select Dyslexia-friendly Font"
+            style={{
+              background: "rgba(255,255,255,0.10)",
+              border: "1px solid rgba(255,255,255,0.20)",
+              color: "#E6F4FB",
+              borderRadius: 8,
+              padding: "5px 10px",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              outline: "none",
+            }}
+          >
+            {fontOptions.map((f) => (
+              <option key={f.value} value={f.value} style={{ background: "#182D46", color: "#FFF" }}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.06)", padding: "4px 8px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: AMBER, marginRight: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <SlidersHorizontal size={12} /> THEME
+          </span>
+          {themes.map((t) => {
+            const active = themeMode === t;
+            return (
+              <button
+                key={t}
+                onClick={() => setThemeMode(t)}
+                style={{
+                  background: active ? "rgba(95,168,211,0.35)" : "transparent",
+                  border: `1px solid ${active ? "rgba(95,168,211,0.60)" : "transparent"}`,
+                  color: active ? "#FFF" : MUTED_DARK,
+                  borderRadius: 7,
+                  padding: "4px 10px",
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 180ms ease",
+                }}
+              >
+                {t}
+              </button>
+            );
+          })}
+          <div style={{ width: 1, height: 16, background: "rgba(255,255,255,0.15)", margin: "0 4px" }} />
+          <button
+            onClick={() => setRulerEnabled(!rulerEnabled)}
+            style={{
+              background: rulerEnabled ? "rgba(232,163,61,0.28)" : "transparent",
+              border: `1px solid ${rulerEnabled ? AMBER : "transparent"}`,
+              color: rulerEnabled ? "#FFF" : MUTED_DARK,
+              borderRadius: 7,
+              padding: "4px 10px",
+              fontSize: 11.5,
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <Layers size={12} color={rulerEnabled ? AMBER : MUTED_DARK} /> Ruler
+          </button>
+        </div>
       </div>
 
-      {/* Stage & Demo Quick Triggers */}
+      {/* Quick Triggers */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <button
           onClick={onLoadDemo}
@@ -2262,20 +2342,30 @@ function TopHeader({ webcam, themeMode, setThemeMode, rulerEnabled, setRulerEnab
         </button>
 
         {/* Camera / Signal Health Badge */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "5px 12px", borderRadius: 999,
-          background: "rgba(255,255,255,0.10)",
-          border: "1px solid rgba(255,255,255,0.18)",
-          backdropFilter: GLASS_BLUR,
-          WebkitBackdropFilter: GLASS_BLUR,
-        }} title={webcam.message}>
-          <Camera size={14} color={camColor} />
-          <span style={{ width: 8, height: 8, borderRadius: 99, background: camColor, display: "inline-block" }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#E6F4FB" }}>
-            {webcam.status === "checking" ? "Checking camera…" : webcam.message}
-          </span>
-        </div>
+        <button
+          onClick={onShowCameraSetup}
+          style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "5px 12px", borderRadius: 999,
+            background: cv?.cvReady ? "rgba(78,154,107,0.25)" : "rgba(255,255,255,0.10)",
+            border: cv?.cvReady ? "1px solid rgba(78,154,107,0.50)" : "1px solid rgba(255,255,255,0.18)",
+            backdropFilter: GLASS_BLUR,
+            WebkitBackdropFilter: GLASS_BLUR,
+            color: "#E6F4FB",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+          title="Click to open gaze tracking setup & camera selection"
+        >
+          <Camera size={14} color={cv?.cvReady ? SAGE : camColor} />
+          <span style={{
+            width: 8, height: 8, borderRadius: 99,
+            background: cv?.cvReady ? SAGE : camColor,
+            display: "inline-block"
+          }} />
+          <span>{cvStatusText}</span>
+        </button>
       </div>
     </header>
   );
@@ -2295,6 +2385,132 @@ By continuously observing ocular cadence and reading friction in real time, the 
 };
 
 /* ------------------------------------------------------------------ */
+/* Font options                                                         */
+/* ------------------------------------------------------------------ */
+const FONT_OPTIONS = [
+  { label: "Calibri (Default)",   value: "Calibri, sans-serif" },
+  { label: "Arial (Roman)",       value: "Arial, Helvetica, sans-serif" },
+  { label: "Helvetica (Roman)",   value: "Helvetica Neue, Helvetica, Arial, sans-serif" },
+  { label: "Verdana (Dyslexia)",  value: "Verdana, Tahoma, sans-serif" },
+  { label: "OpenDyslexic",        value: "OpenDyslexic, Verdana, sans-serif" },
+];
+
+/* ------------------------------------------------------------------ */
+/* Camera Setup Panel — shown when CV hasn't started yet              */
+/* ------------------------------------------------------------------ */
+function CameraSetupPanel({ cv, onStartReading }) {
+  const { cameras, selectedCamera, setSelectedCamera, cvStatus, cvStatusMsg, startCV, skipBaseline } = cv;
+
+  const isInitializing = ["initializing", "calibrating", "baseline"].includes(cvStatus);
+  const isFailed = cvStatus === "error" || cvStatus === "unavailable";
+
+  return (
+    <div className="animate-slide-down" style={{
+      position: "absolute", inset: 0, zIndex: 50,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: "rgba(10,18,28,0.72)", backdropFilter: "blur(18px)",
+    }}>
+      <div style={{
+        ...glassDarkStyle({ width: "100%", maxWidth: 460, borderRadius: 20, padding: "32px 28px" }),
+        position: "relative",
+      }}>
+        <TopGlassHighlight opacity={0.9} />
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <Camera size={36} color={SKY} style={{ marginBottom: 12 }} />
+          <h2 style={{ margin: 0, fontSize: 22, color: "#FFF", fontFamily: "Cambria, serif" }}>
+            Set Up Gaze Tracking
+          </h2>
+          <p style={{ margin: "8px 0 0", fontSize: 13, color: MUTED_DARK, lineHeight: 1.5 }}>
+            Adaptive Reader uses your webcam to detect reading difficulty in real time.
+          </p>
+        </div>
+
+        {/* Camera selector */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: MUTED_DARK, marginBottom: 6 }}>
+            SELECT CAMERA
+          </div>
+          {cameras.length === 0 ? (
+            <div style={{ fontSize: 13, color: AMBER }}>No cameras detected</div>
+          ) : (
+            <select
+              value={selectedCamera ?? ""}
+              onChange={(e) => setSelectedCamera(e.target.value)}
+              style={{
+                width: "100%", padding: "9px 12px", borderRadius: 8,
+                background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.22)",
+                color: "#FFF", fontSize: 13, outline: "none",
+              }}
+            >
+              {cameras.map((c) => (
+                <option key={c.deviceId} value={c.deviceId} style={{ background: "#182D46" }}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Status */}
+        {isInitializing && (
+          <div style={{
+            background: "rgba(95,168,211,0.12)", borderRadius: 8,
+            padding: "10px 14px", marginBottom: 16,
+            fontSize: 12.5, color: "#E6F4FB", display: "flex", alignItems: "center", gap: 8,
+          }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: "50%", background: SKY, display: "inline-block",
+              animation: "pulseGlow 1.2s ease-in-out infinite",
+            }} />
+            {cvStatusMsg}
+          </div>
+        )}
+        {isFailed && (
+          <div style={{
+            background: "rgba(193,84,76,0.15)", borderRadius: 8,
+            padding: "10px 14px", marginBottom: 16,
+            fontSize: 12.5, color: "#FCA5A5",
+          }}>
+            ⚠ {cvStatusMsg}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={() => startCV(selectedCamera)}
+            disabled={isInitializing}
+            style={{
+              flex: 2, padding: "11px 0", borderRadius: 10, fontWeight: 700, fontSize: 14,
+              background: isInitializing ? "rgba(95,168,211,0.35)" : SKY,
+              border: "none", color: "#FFF", cursor: isInitializing ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            }}
+          >
+            <Camera size={16} />
+            {isInitializing ? "Starting…" : "Start Gaze Tracking"}
+          </button>
+          <button
+            onClick={onStartReading}
+            style={{
+              flex: 1, padding: "11px 0", borderRadius: 10, fontWeight: 600, fontSize: 13,
+              background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.20)",
+              color: "#E6F4FB", cursor: "pointer",
+            }}
+          >
+            Skip → Read
+          </button>
+        </div>
+
+        <div style={{ textAlign: "center", marginTop: 16, fontSize: 11, color: MUTED_DARK }}>
+          Press <kbd style={{ background: "rgba(255,255,255,0.12)", padding: "1px 5px", borderRadius: 4 }}>S</kbd> to skip baseline with defaults · 
+          <kbd style={{ background: "rgba(255,255,255,0.12)", padding: "1px 5px", borderRadius: 4, marginLeft: 4 }}>R</kbd> to quick recalibrate
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Top-level shell                                                     */
 /* ------------------------------------------------------------------ */
 export default function AdaptiveReaderUI() {
@@ -2303,10 +2519,29 @@ export default function AdaptiveReaderUI() {
   const [historyOpen, setHistoryOpen] = useState(true);
   const [themeMode, setThemeMode] = useState("Standard");
   const [rulerEnabled, setRulerEnabled] = useState(false);
+  const [selectedFont, setSelectedFont] = useState(FONT_OPTIONS[0].value);
+  const [showCameraSetup, setShowCameraSetup] = useState(false);
   const webcam = useWebcamStatus();
+
+  // CV integration — real gaze tracking from window.AdaptiveReaderCV
+  const cv = useCV();
 
   useEffect(() => { saveHistory(history); }, [history]);
   useEffect(() => { saveActive(activeFile); }, [activeFile]);
+
+  // When a document loads, wire the text container to the CV DOM mapper
+  useEffect(() => {
+    if (activeFile && cv.cvReady) {
+      setTimeout(() => {
+        cv.setTextRegion("#text-container");
+        // Feed word/line counts to ReadingIntelligence
+        if (window.ReadingIntelligence?.setDocumentWordCount) {
+          const wordCount = activeFile.content?.split(/\s+/).filter(Boolean).length ?? 0;
+          window.ReadingIntelligence.setDocumentWordCount(wordCount, Math.ceil(wordCount / 12));
+        }
+      }, 300);
+    }
+  }, [activeFile, cv.cvReady]);
 
   const openFile = useCallback((file) => {
     const id = `${file.name}::${file.size}::${Date.now()}`;
@@ -2316,6 +2551,7 @@ export default function AdaptiveReaderUI() {
       return [entry, ...dedup].slice(0, 25);
     });
     setActiveFile(entry);
+    setShowCameraSetup(false);
   }, []);
 
   const openFromHistory = useCallback((item) => {
@@ -2357,20 +2593,25 @@ export default function AdaptiveReaderUI() {
   return (
     <div style={{
       display: "flex", flexDirection: "column", height: "100vh", width: "100%",
-      fontFamily: "Calibri, sans-serif",
+      fontFamily: selectedFont,
       background: "linear-gradient(155deg, #101E2E 0%, #1A3455 32%, #3878A3 68%, #91C0DE 100%)",
       position: "relative",
       overflow: "hidden",
     }}>
       <TopHeader
         webcam={webcam}
+        cv={cv}
         themeMode={themeMode}
         setThemeMode={setThemeMode}
         rulerEnabled={rulerEnabled}
         setRulerEnabled={setRulerEnabled}
+        selectedFont={selectedFont}
+        setSelectedFont={setSelectedFont}
+        fontOptions={FONT_OPTIONS}
         onSimulateFriction={simulateFriction}
         onLoadDemo={loadDemoPassage}
         onResetSession={resetSession}
+        onShowCameraSetup={() => setShowCameraSetup((v) => !v)}
       />
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <HistorySidebar
@@ -2384,8 +2625,16 @@ export default function AdaptiveReaderUI() {
         />
 
         <main style={{ flex: 1, display: "flex", minWidth: 0, position: "relative", overflow: "hidden" }}>
+          {/* Camera setup overlay */}
+          {showCameraSetup && (
+            <CameraSetupPanel
+              cv={cv}
+              onStartReading={() => setShowCameraSetup(false)}
+            />
+          )}
+
           {!activeFile ? (
-            <Landing onOpen={openFile} onPickFromHistory={history.length > 0} />
+            <Landing onOpen={openFile} onPickFromHistory={history.length > 0} onLoadDemo={loadDemoPassage} />
           ) : (
             <Reader
               file={activeFile}
@@ -2394,6 +2643,8 @@ export default function AdaptiveReaderUI() {
               setThemeMode={setThemeMode}
               rulerEnabled={rulerEnabled}
               setRulerEnabled={setRulerEnabled}
+              selectedFont={selectedFont}
+              cv={cv}
             />
           )}
         </main>
