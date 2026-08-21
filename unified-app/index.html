@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adaptive Reader</title>
+    <meta name="description" content="Adaptive Reader — real-time reading support powered by eye tracking and reading intelligence.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <div class="sky-background">
+        <div class="glass-orb orb-1"></div>
+        <div class="glass-orb orb-2"></div>
+        <div class="glass-orb orb-3"></div>
+    </div>
+
+    <div id="app">
+
+        <div id="landing-screen" class="screen">
+            <div class="glass-card landing-card">
+                <div class="glass-highlight"></div>
+                <div class="icon-circle">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                    </svg>
+                </div>
+                <h1>Open a passage to begin</h1>
+                <p>Adaptive Reader watches your reading flow and steps in when a passage turns rough.</p>
+
+                <input type="file" id="file-input" accept=".txt,.md,.pdf,.docx,.pptx,.png,.jpg,.jpeg" style="display: none;">
+
+                <div class="button-group">
+                    <button id="choose-file-btn" class="primary-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        Choose a file
+                    </button>
+                    <button id="demo-btn" class="secondary-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                        Start Demo
+                    </button>
+                </div>
+
+                <p class="hint">…or drag and drop a file onto this card.</p>
+                <div id="error-message" class="error-message"></div>
+            </div>
+        </div>
+
+        <div id="reading-screen" class="screen hidden">
+
+            <div class="reading-container">
+                <div class="reading-layout">
+
+                    <div class="glass-card reading-card">
+                        <div class="glass-highlight"></div>
+
+                        <div class="reading-header">
+                            <div class="reading-header-left">
+                                <button id="back-btn" class="icon-btn" title="Back to upload">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="19" y1="12" x2="5" y2="12"></line>
+                                        <polyline points="12 19 5 12 12 5"></polyline>
+                                    </svg>
+                                </button>
+                                <h2 id="document-title">Document</h2>
+                                <span id="demo-badge" class="demo-badge hidden">DEMO — Simulated</span>
+                            </div>
+                            <div class="reading-header-right">
+                                <div id="cv-status-row" class="cv-status-row">
+                                    <div class="cv-status-item">
+                                        <div class="cv-dot" id="cv-dot-camera"></div>
+                                        <span>Camera</span>
+                                    </div>
+                                    <div class="cv-status-item">
+                                        <div class="cv-dot" id="cv-dot-face"></div>
+                                        <span>Face</span>
+                                    </div>
+                                    <div class="cv-status-item">
+                                        <div class="cv-dot" id="cv-dot-gaze"></div>
+                                        <span>Gaze</span>
+                                    </div>
+                                </div>
+                                <button id="calibrate-btn" class="action-pill-btn" title="Calibrate eye tracking">
+                                    ⚡ Calibrate
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="cv-loading-banner" class="cv-loading-banner hidden">
+                            <div class="cv-loading-spinner"></div>
+                            <span id="cv-loading-text">Initializing eye tracking…</span>
+                        </div>
+
+                        <div id="text-container" class="text-container">
+                        </div>
+
+                        <div class="reading-footer">
+                            <div class="status-indicators">
+                                <div class="status-item">
+                                    <div class="status-dot" id="system-status"></div>
+                                    <span>System</span>
+                                </div>
+                                <div class="status-item">
+                                    <div class="status-dot" id="reading-status"></div>
+                                    <span>Reading</span>
+                                </div>
+                            </div>
+                            <div class="reading-metrics">
+                                <div class="metric">
+                                    <span class="metric-label">WPM</span>
+                                    <span class="metric-value" id="wpm-display">--</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Fixation</span>
+                                    <span class="metric-value" id="fixation-display">--</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Reading Friction</span>
+                                    <span class="metric-value" id="friction-display">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="side-panel">
+
+                        <div id="adaptation-panel" class="glass-card adaptation-card hidden">
+                            <div class="glass-highlight"></div>
+                            <div class="adaptation-header">
+                                <div class="adaptation-icon">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C1544C" stroke-width="2">
+                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                    </svg>
+                                </div>
+                                <div class="adaptation-title-block">
+                                    <h4 id="adaptation-state-label">Reading Friction Detected</h4>
+                                    <span id="adaptation-score-label" class="adaptation-score-label"></span>
+                                </div>
+                                <button id="dismiss-adaptation" class="icon-btn">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div id="adaptation-reasons" class="adaptation-reasons"></div>
+                            <div class="adaptation-actions">
+                                <button id="adapt-spacing-btn" class="action-btn">Increase Spacing</button>
+                                <button id="adapt-font-btn" class="action-btn">Larger Font</button>
+                                <button id="adapt-line-height-btn" class="action-btn">More Line Height</button>
+                            </div>
+                        </div>
+
+                        <div id="ai-panel" class="glass-card ai-card hidden">
+                            <div class="glass-highlight"></div>
+                            <div class="ai-header">
+                                <span class="ai-icon">✦</span>
+                                <h4>Reading Assist</h4>
+                                <button id="dismiss-ai" class="icon-btn">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div id="ai-content" class="ai-content">
+                                <p id="ai-text" class="ai-text"></p>
+                                <div id="ai-loading" class="ai-loading hidden">
+                                    <div class="ai-loading-dots"><span></span><span></span><span></span></div>
+                                    <span>Generating explanation…</span>
+                                </div>
+                            </div>
+                            <div class="ai-actions">
+                                <button id="ai-simplify-btn" class="ai-action-btn" title="Simplify this passage">Simplify</button>
+                                <button id="ai-explain-btn" class="ai-action-btn" title="Explain what you just read">Explain</button>
+                            </div>
+                        </div>
+
+                        <div class="glass-card session-card">
+                            <div class="glass-highlight"></div>
+                            <div class="session-info">
+                                <div class="session-stat">
+                                    <span class="session-label">Words</span>
+                                    <span class="session-value" id="word-count-display">--</span>
+                                </div>
+                                <div class="session-stat">
+                                    <span class="session-label">Paragraphs</span>
+                                    <span class="session-value" id="para-count-display">--</span>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="../adaptive-reader-cv/webgazer.js"></script>
+
+    <script>
+        window.mediapipeReadyResolve = null;
+        window.mediapipeReadyPromise = new Promise(function (resolve) {
+            window.mediapipeReadyResolve = resolve;
+            setTimeout(resolve, 2500);
+        });
+    </script>
+
+    <script type="module">
+        try {
+            const visionModule = await import("../adaptive-reader-cv/mediapipe/tasks-vision-wasm/vision_bundle.js");
+            window.FaceLandmarker = visionModule.FaceLandmarker;
+            window.FilesetResolver = visionModule.FilesetResolver;
+        } catch (error) {
+            try {
+                const cdnModule = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js");
+                window.FaceLandmarker = cdnModule.FaceLandmarker;
+                window.FilesetResolver = cdnModule.FilesetResolver;
+            } catch (cdnError) {
+                console.error("Unable to load MediaPipe bundle:", cdnError);
+            }
+        }
+        if (typeof window.mediapipeReadyResolve === "function") {
+            window.mediapipeReadyResolve();
+        }
+    </script>
+
+    <script src="../adaptive-reader-cv/src/event-api.js"></script>
+    <script src="../adaptive-reader-cv/src/camera-manager.js"></script>
+    <script src="../adaptive-reader-cv/src/mediapipe-engine.js"></script>
+    <script src="../adaptive-reader-cv/src/confidence-gate.js"></script>
+    <script src="../adaptive-reader-cv/src/gaze-pipeline.js"></script>
+    <script src="../adaptive-reader-cv/src/dom-mapper.js"></script>
+    <script src="../adaptive-reader-cv/src/calibration-ui.js"></script>
+    <script src="../adaptive-reader-cv/src/baseline-capture.js"></script>
+    <script src="../adaptive-reader-cv/src/reading-state-engine.js"></script>
+    <script src="../adaptive-reader-cv/src/difficulty-engine.js"></script>
+    <script src="../adaptive-reader-cv/src/adaptation-contract.js"></script>
+    <script src="../adaptive-reader-cv/src/main.js"></script>
+    <script src="app-ui.js"></script>
+    <script src="main.js"></script>
+
+</body>
+</html>
