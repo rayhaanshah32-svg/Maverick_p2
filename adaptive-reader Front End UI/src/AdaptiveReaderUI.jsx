@@ -34,6 +34,32 @@ const MUTED_DARK = "#93A4B8";
 const BENCHMARK_WPM = 215;
 
 /* ------------------------------------------------------------------ */
+/* Liquid-glass tokens                                                 */
+/* ------------------------------------------------------------------ */
+const GLASS_BLUR = "blur(14px) saturate(1.15)";
+const glassStyle = (extra = {}) => ({
+  background: "rgba(255,255,255,0.42)",
+  backdropFilter: GLASS_BLUR,
+  WebkitBackdropFilter: GLASS_BLUR,
+  border: "1px solid rgba(255,255,255,0.55)",
+  boxShadow:
+    "0 1px 0 rgba(255,255,255,0.65) inset, " +
+    "0 8px 24px rgba(30,58,95,0.10), " +
+    "0 1px 2px rgba(30,58,95,0.06)",
+  ...extra,
+});
+const glassDarkStyle = (extra = {}) => ({
+  background: "rgba(19,34,52,0.42)",
+  backdropFilter: GLASS_BLUR,
+  WebkitBackdropFilter: GLASS_BLUR,
+  border: "1px solid rgba(255,255,255,0.10)",
+  boxShadow:
+    "0 1px 0 rgba(255,255,255,0.06) inset, " +
+    "0 8px 24px rgba(0,0,0,0.25)",
+  ...extra,
+});
+
+/* ------------------------------------------------------------------ */
 /* Persistence                                                         */
 /* ------------------------------------------------------------------ */
 const HISTORY_KEY = "adaptive-reader:history";
@@ -147,13 +173,71 @@ function deriveVitals(m) {
 const lerp = (a, b, t) => a + (b - a) * t;
 
 /* ------------------------------------------------------------------ */
-/* Subtle transparent background pattern                               */
+/* Sky-blue liquid glass overlay — blurred orbs + soft grid            */
 /* ------------------------------------------------------------------ */
-const PATTERN_BG = [
-  `radial-gradient(circle at 12% 18%, rgba(255,255,255,0.45) 0, transparent 38%)`,
-  `radial-gradient(circle at 88% 82%, rgba(30,58,95,0.10) 0, transparent 42%)`,
-  `radial-gradient(circle at 50% 50%, rgba(95,168,211,0.10) 0, transparent 60%)`,
-].join(", ");
+function SkyBackgroundDesigns() {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        pointerEvents: "none",
+        zIndex: 0,
+        background: "transparent",
+      }}
+    >
+      <svg style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}>
+        <defs>
+          {/* Glossy glass orbs — like droplets on a frosted window */}
+          <radialGradient id="orb-cyan" cx="35%" cy="35%" r="65%">
+            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.85" />
+            <stop offset="55%" stopColor="#E6F4FB" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#9FCEE8" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="orb-sky" cx="35%" cy="35%" r="65%">
+            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.75" />
+            <stop offset="55%" stopColor="#C7E4F2" stopOpacity="0.30" />
+            <stop offset="100%" stopColor="#5FA8D3" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="orb-deep" cx="35%" cy="35%" r="65%">
+            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.55" />
+            <stop offset="60%" stopColor="#BFE0F2" stopOpacity="0.20" />
+            <stop offset="100%" stopColor="#1E3A5F" stopOpacity="0" />
+          </radialGradient>
+
+          {/* Faint glass-noise grid */}
+          <pattern id="sky-grid" width="56" height="56" patternUnits="userSpaceOnUse">
+            <circle cx="28" cy="28" r="1.2" fill="#1E3A5F" fillOpacity="0.10" />
+            <circle cx="0" cy="0" r="1.1" fill="#FFFFFF" fillOpacity="0.55" />
+            <circle cx="56" cy="0" r="1.1" fill="#FFFFFF" fillOpacity="0.55" />
+            <circle cx="0" cy="56" r="1.1" fill="#FFFFFF" fillOpacity="0.55" />
+            <circle cx="56" cy="56" r="1.1" fill="#FFFFFF" fillOpacity="0.55" />
+          </pattern>
+
+          {/* Soft top highlight (light source from above) */}
+          <linearGradient id="top-shine" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.45" />
+            <stop offset="60%" stopColor="#FFFFFF" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Ambient glass orbs scattered across the sky */}
+        <ellipse cx="14%" cy="22%" rx="240" ry="200" fill="url(#orb-cyan)" />
+        <ellipse cx="86%" cy="12%" rx="320" ry="220" fill="url(#orb-sky)" />
+        <ellipse cx="78%" cy="78%" rx="360" ry="260" fill="url(#orb-cyan)" />
+        <ellipse cx="22%" cy="86%" rx="280" ry="220" fill="url(#orb-deep)" />
+        <ellipse cx="50%" cy="50%" rx="420" ry="300" fill="url(#orb-sky)" opacity="0.6" />
+
+        {/* Faint dot grid overlay */}
+        <rect width="100%" height="100%" fill="url(#sky-grid)" />
+
+        {/* Light reflection from the top edge */}
+        <rect width="100%" height="100%" fill="url(#top-shine)" />
+      </svg>
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /* Flow wave                                                           */
@@ -272,6 +356,9 @@ async function extractText(file) {
 const ACCEPT_LIST = ".txt,.md,.markdown,.rtf,.pdf,.pptx,.png,.jpg,.jpeg,.gif,.webp,.bmp,.tif,.tiff,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/*";
 
 /* ------------------------------------------------------------------ */
+/* Mild transparent floating background graphics for blank sky space  */
+/* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
 /* Landing screen                                                      */
 /* ------------------------------------------------------------------ */
 function Landing({ onOpen, onPickFromHistory }) {
@@ -305,13 +392,13 @@ function Landing({ onOpen, onPickFromHistory }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: SKY_BG,
-        backgroundImage: PATTERN_BG,
-        backgroundRepeat: "no-repeat",
+        background: "transparent",
         padding: 40,
         minHeight: "100vh",
+        overflow: "hidden",
       }}
     >
+      <SkyBackgroundDesigns />
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
@@ -321,21 +408,24 @@ function Landing({ onOpen, onPickFromHistory }) {
           readFile(e.dataTransfer.files?.[0]);
         }}
         style={{
-          width: "100%",
-          maxWidth: 560,
-          background: "rgba(255,255,255,0.55)",
-          backdropFilter: "blur(10px)",
-          WebkitBackdropFilter: "blur(10px)",
-          border: `1px dashed ${dragOver ? NAVY : "rgba(30,58,95,0.35)"}`,
-          borderRadius: 18,
-          padding: "40px 36px",
-          textAlign: "center",
-          boxShadow: "0 12px 32px rgba(20,30,45,0.10)",
-          transition: "border-color 200ms ease, background 200ms ease",
+          ...glassStyle({
+            position: "relative",
+            zIndex: 1,
+            width: "100%",
+            maxWidth: 560,
+            border: `1px dashed ${dragOver ? NAVY : "rgba(30,58,95,0.30)"}`,
+            borderRadius: 18,
+            padding: "40px 36px",
+            textAlign: "center",
+          }),
         }}
       >
         <div style={{
-          width: 56, height: 56, borderRadius: 14, background: NAVY,
+          width: 56, height: 56, borderRadius: 14,
+          background: "rgba(30,58,95,0.85)",
+          border: "1px solid rgba(255,255,255,0.30)",
+          backdropFilter: GLASS_BLUR,
+          WebkitBackdropFilter: GLASS_BLUR,
           display: "flex", alignItems: "center", justifyContent: "center",
           margin: "0 auto 18px",
         }}>
@@ -405,13 +495,18 @@ function HistorySidebar({ open, items, activeId, onOpen, onRemove, onClear, onTo
   return (
     <aside
       style={{
-        width: open ? W : 44,
-        flexShrink: 0,
-        background: NAVY_DARK,
-        borderRight: "1px solid rgba(255,255,255,0.06)",
-        display: "flex",
-        flexDirection: "column",
-        transition: "width 250ms ease",
+        ...glassDarkStyle({
+          width: open ? W : 44,
+          flexShrink: 0,
+          borderRight: "1px solid rgba(255,255,255,0.10)",
+          borderTop: "none",
+          borderBottom: "none",
+          borderLeft: "none",
+          borderRadius: 0,
+          display: "flex",
+          flexDirection: "column",
+          transition: "width 250ms ease",
+        }),
       }}
     >
       <div style={{
@@ -465,8 +560,8 @@ function HistorySidebar({ open, items, activeId, onOpen, onRemove, onClear, onTo
                   style={{
                     display: "flex", alignItems: "center", gap: 8,
                     padding: "10px 10px", borderRadius: 8, cursor: "pointer",
-                    background: isActive ? "rgba(232,163,61,0.16)" : "transparent",
-                    border: `1px solid ${isActive ? AMBER : "transparent"}`,
+                    background: isActive ? "rgba(232,163,61,0.18)" : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${isActive ? "rgba(232,163,61,0.55)" : "rgba(255,255,255,0.06)"}`,
                     marginBottom: 4,
                     transition: "background 180ms ease, border-color 180ms ease",
                   }}
@@ -640,7 +735,9 @@ function Reader({ file, onClose }) {
     setPhaseIdx(nextStruggle !== -1 ? nextStruggle : PHASES.findIndex((p) => p.mode === "struggle"));
   };
 
-  const paneBg = isStruggling ? TINT : BEIGE;
+  const paneBg = isStruggling
+    ? "rgba(255, 244, 222, 0.55)"
+    : "rgba(255, 255, 255, 0.55)";
   const paneTextColor = BROWN;
   const lineHeight = isStruggling ? 2.15 : 1.85;
   const letterSpacing = isStruggling ? "0.02em" : "normal";
@@ -657,12 +754,19 @@ function Reader({ file, onClose }) {
       {/* Reading pane */}
       <div style={{
         flex: 1, display: "flex", flexDirection: "column", minWidth: 0,
-        background: SKY_BG, backgroundImage: PATTERN_BG, backgroundRepeat: "no-repeat",
+        background: "transparent", position: "relative", overflow: "hidden",
       }}>
+        <SkyBackgroundDesigns />
         <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "10px 24px", borderBottom: "1px solid rgba(20,30,45,0.08)",
-          background: SKY_HEADER,
+          ...glassStyle({
+            position: "relative", zIndex: 1,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "10px 18px",
+            borderRadius: 0,
+            borderLeft: "none",
+            borderRight: "none",
+            borderTop: "none",
+          }),
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: BROWN, fontWeight: 600 }}>
             <FileText size={15} color={NAVY} />
@@ -676,8 +780,9 @@ function Reader({ file, onClose }) {
             style={{
               display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600,
               color: NAVY, background: "rgba(255,255,255,0.55)",
-              border: "1px solid rgba(30,58,95,0.25)", borderRadius: 8,
+              border: "1px solid rgba(30,58,95,0.18)", borderRadius: 8,
               padding: "6px 10px", cursor: "pointer",
+              backdropFilter: GLASS_BLUR, WebkitBackdropFilter: GLASS_BLUR,
             }}
           >
             <Upload size={14} /> Open another
@@ -685,12 +790,20 @@ function Reader({ file, onClose }) {
         </div>
 
         <div style={{
+          position: "relative", zIndex: 1,
           flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
           padding: "40px 56px", overflow: "auto",
         }}>
           <div style={{
+            position: "relative", zIndex: 1,
             maxWidth: 720, width: "100%", background: paneBg, borderRadius: 18,
-            padding: "48px 52px", boxShadow: "0 12px 32px rgba(20,30,45,0.10)",
+            padding: "48px 52px",
+            border: "1px solid rgba(255,255,255,0.55)",
+            boxShadow:
+              "0 1px 0 rgba(255,255,255,0.65) inset, " +
+              "0 12px 32px rgba(20,30,45,0.10)",
+            backdropFilter: GLASS_BLUR,
+            WebkitBackdropFilter: GLASS_BLUR,
             transition: "background 500ms ease",
           }}>
             {WORDS.length === 0 ? (
@@ -733,7 +846,11 @@ function Reader({ file, onClose }) {
             {struggleReasons && currentWord.clean && (
               <div style={{
                 marginTop: 30, padding: "16px 18px", borderRadius: 12,
-                background: "#FFFFFF", border: `1px solid ${AMBER}`,
+                background: "rgba(255,255,255,0.65)",
+                border: `1px solid ${AMBER}`,
+                backdropFilter: GLASS_BLUR,
+                WebkitBackdropFilter: GLASS_BLUR,
+                boxShadow: "0 6px 20px rgba(232,163,61,0.18)",
                 display: "flex", flexDirection: "column", gap: 10,
               }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -762,11 +879,21 @@ function Reader({ file, onClose }) {
 
       {/* Vitals sidebar (existing) */}
       <div style={{
-        width: vitalsOpen ? 280 : 44, flexShrink: 0, background: NAVY_DARK,
-        borderLeft: "1px solid rgba(255,255,255,0.06)",
-        padding: vitalsOpen ? "20px 18px" : "16px 0", display: "flex", flexDirection: "column",
-        alignItems: vitalsOpen ? "stretch" : "center", gap: 14,
-        transition: "width 250ms ease, padding 250ms ease",
+        ...glassDarkStyle({
+          width: vitalsOpen ? 280 : 44,
+          flexShrink: 0,
+          borderLeft: "1px solid rgba(255,255,255,0.10)",
+          borderTop: "none",
+          borderBottom: "none",
+          borderRight: "none",
+          borderRadius: 0,
+          padding: vitalsOpen ? "20px 18px" : "16px 0",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: vitalsOpen ? "stretch" : "center",
+          gap: 14,
+          transition: "width 250ms ease, padding 250ms ease",
+        }),
       }}>
         {vitalsOpen ? (
           <>
@@ -775,7 +902,14 @@ function Reader({ file, onClose }) {
               <div style={{ fontSize: 10.5, color: MUTED_DARK, marginTop: 2 }}>Live signal from the reading session</div>
             </div>
 
-            <div style={{ background: NAVY_PANEL, borderRadius: 12, padding: 16 }}>
+            <div style={{
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              borderRadius: 12,
+              padding: 16,
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+            }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 {isStruggling ? <AlertTriangle size={18} color={AMBER} /> : <CheckCircle2 size={18} color={SAGE} />}
                 <div>
@@ -822,8 +956,10 @@ function Reader({ file, onClose }) {
                   onClick={() => setPlaying((p) => !p)}
                   style={{
                     flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    fontSize: 11.5, fontWeight: 600, color: "#fff", background: NAVY_PANEL,
-                    border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "8px 0", cursor: "pointer",
+                    fontSize: 11.5, fontWeight: 600, color: "#E6F4FB",
+                    background: "rgba(255,255,255,0.08)",
+                    border: "1px solid rgba(255,255,255,0.18)", borderRadius: 8, padding: "8px 0", cursor: "pointer",
+                    backdropFilter: GLASS_BLUR, WebkitBackdropFilter: GLASS_BLUR,
                   }}
                 >
                   {playing ? <Pause size={12} /> : <Play size={12} />} {playing ? "Pause" : "Resume"}
@@ -848,7 +984,8 @@ function Reader({ file, onClose }) {
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.18)",
-              background: NAVY_PANEL, color: "#fff", cursor: "pointer", marginTop: 8,
+              background: "rgba(255,255,255,0.08)", color: "#E6F4FB", cursor: "pointer", marginTop: 8,
+              backdropFilter: GLASS_BLUR, WebkitBackdropFilter: GLASS_BLUR,
             }}
           >
             <PanelRightOpen size={16} />
@@ -901,27 +1038,35 @@ function TopHeader({ webcam }) {
   const camColor = webcam.status === "on" ? SAGE : webcam.status === "off" ? BRICK : AMBER;
   return (
     <header style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "10px 22px",
-      background: NAVY,
-      borderBottom: `1px solid ${NAVY_DARK}`,
-      color: "#fff",
-      flexShrink: 0,
+      ...glassDarkStyle({
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "10px 22px",
+        borderRadius: 0,
+        borderLeft: "none",
+        borderRight: "none",
+        borderTop: "none",
+        color: "#fff",
+        flexShrink: 0,
+      }),
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{
-          width: 34, height: 34, borderRadius: 9, background: SKY,
+          width: 34, height: 34, borderRadius: 9,
+          background: "rgba(95,168,211,0.55)",
+          border: "1px solid rgba(255,255,255,0.35)",
           display: "flex", alignItems: "center", justifyContent: "center",
+          backdropFilter: GLASS_BLUR,
+          WebkitBackdropFilter: GLASS_BLUR,
         }}>
-          <Waves size={17} color={NAVY_DARK} />
+          <Waves size={17} color="#E6F4FB" />
         </div>
         <div>
-          <div style={{ fontFamily: "Cambria, serif", fontWeight: 700, fontSize: 18, lineHeight: 1.1 }}>
+          <div style={{ fontFamily: "Cambria, serif", fontWeight: 700, fontSize: 18, lineHeight: 1.1, color: "#F2F8FC" }}>
             Adaptive Reader
           </div>
-          <div style={{ fontSize: 10.5, color: MUTED_DARK, letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 10.5, color: "rgba(220,230,240,0.75)", letterSpacing: 0.5 }}>
             Reading flow companion
           </div>
         </div>
@@ -930,12 +1075,14 @@ function TopHeader({ webcam }) {
       <div style={{
         display: "flex", alignItems: "center", gap: 8,
         padding: "6px 12px", borderRadius: 999,
-        background: "rgba(255,255,255,0.08)",
-        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.10)",
+        border: "1px solid rgba(255,255,255,0.18)",
+        backdropFilter: GLASS_BLUR,
+        WebkitBackdropFilter: GLASS_BLUR,
       }} title={webcam.message}>
         <Camera size={14} color={camColor} />
         <span style={{ width: 8, height: 8, borderRadius: 99, background: camColor, display: "inline-block" }} />
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: "#DCE6F0" }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "#E6F4FB" }}>
           {webcam.status === "checking" ? "Checking camera…" : webcam.message}
         </span>
       </div>
@@ -983,7 +1130,10 @@ export default function AdaptiveReaderUI() {
   return (
     <div style={{
       display: "flex", flexDirection: "column", height: "100vh", width: "100%",
-      fontFamily: "Calibri, sans-serif", background: SKY_BG,
+      fontFamily: "Calibri, sans-serif",
+      background: "linear-gradient(160deg, #DCEEF8 0%, #BFE0F2 45%, #A6D2EA 100%)",
+      position: "relative",
+      overflow: "hidden",
     }}>
       <TopHeader webcam={webcam} />
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
@@ -997,7 +1147,7 @@ export default function AdaptiveReaderUI() {
           onToggle={() => setHistoryOpen((o) => !o)}
         />
 
-        <main style={{ flex: 1, display: "flex", minWidth: 0, backgroundImage: PATTERN_BG, backgroundRepeat: "no-repeat" }}>
+        <main style={{ flex: 1, display: "flex", minWidth: 0, position: "relative", overflow: "hidden" }}>
           {!activeFile ? (
             <Landing onOpen={openFile} onPickFromHistory={history.length > 0} />
           ) : (
