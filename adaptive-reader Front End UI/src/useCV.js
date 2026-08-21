@@ -19,6 +19,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 /* ------------------------------------------------------------------ */
 export async function listCameras() {
   try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.warn("[useCV] navigator.mediaDevices unavailable. Modern browsers require HTTPS or http://localhost to access the camera.");
+      return [];
+    }
     await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     const devices = await navigator.mediaDevices.enumerateDevices();
     return devices
@@ -32,6 +36,7 @@ export async function listCameras() {
     return [];
   }
 }
+
 
 /* ------------------------------------------------------------------ */
 /* Ollama local LLM helper                                              */
@@ -114,8 +119,14 @@ export function useCV() {
     } catch (err) {
       console.error("[useCV] CV init failed:", err);
       setCvStatus("error");
-      setCvStatusMsg("Camera/CV init failed — Proactive Assist mode active.");
+      const isHttpNetwork = location.hostname !== "localhost" && location.hostname !== "127.0.0.1" && location.protocol === "http:";
+      if (isHttpNetwork) {
+        setCvStatusMsg("Webcam blocked over network HTTP. Use http://localhost on target PC or enable Chrome flag.");
+      } else {
+        setCvStatusMsg("Camera/CV init failed — Proactive Assist mode active.");
+      }
     }
+
   }, []);
 
   /* ---------- Wire CV events once globals are ready ---------- */
