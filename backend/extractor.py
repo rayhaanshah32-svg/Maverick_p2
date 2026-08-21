@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 import pymupdf
 
 from pptx import Presentation
