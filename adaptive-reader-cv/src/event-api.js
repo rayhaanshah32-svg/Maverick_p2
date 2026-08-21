@@ -143,3 +143,6 @@ const EventAPI = (function () {
     };
 
 })();
+if (typeof window !== "undefined") {
+  window.EventAPI = EventAPI;
+}

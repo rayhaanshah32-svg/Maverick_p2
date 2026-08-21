@@ -191,3 +191,6 @@ const AdaptiveReaderCV = (function () {
     };
 
 })();
+if (typeof window !== "undefined") {
+  window.AdaptiveReaderCV = AdaptiveReaderCV;
+}

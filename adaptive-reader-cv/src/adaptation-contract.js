@@ -491,3 +491,7 @@ const ReadingIntelligence = (function () {
     };
 
 })();
+if (typeof window !== "undefined") {
+  window.AdaptationContract = AdaptationContract;
+  window.ReadingIntelligence = ReadingIntelligence;
+}
