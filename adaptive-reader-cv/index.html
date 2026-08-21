@@ -246,14 +246,28 @@
         window.mediapipeReadyResolve = null;
         window.mediapipeReadyPromise = new Promise(function (resolve) {
             window.mediapipeReadyResolve = resolve;
+            setTimeout(resolve, 2500);
         });
     </script>
 
     <script type="module">
-        import { FaceLandmarker, FilesetResolver } from "./mediapipe/tasks-vision-wasm/vision_bundle.mjs";
-        window.FaceLandmarker = FaceLandmarker;
-        window.FilesetResolver = FilesetResolver;
-        window.mediapipeReadyResolve();
+        try {
+            const visionModule = await import("./mediapipe/tasks-vision-wasm/vision_bundle.js");
+            window.FaceLandmarker = visionModule.FaceLandmarker;
+            window.FilesetResolver = visionModule.FilesetResolver;
+        } catch (error) {
+            console.warn("Falling back to online bundle:", error);
+            try {
+                const cdnModule = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js");
+                window.FaceLandmarker = cdnModule.FaceLandmarker;
+                window.FilesetResolver = cdnModule.FilesetResolver;
+            } catch (cdnError) {
+                console.error("Unable to load MediaPipe bundle:", cdnError);
+            }
+        }
+        if (typeof window.mediapipeReadyResolve === "function") {
+            window.mediapipeReadyResolve();
+        }
     </script>
 
     <script src="src/event-api.js"></script>
@@ -504,7 +518,9 @@
             loadingErrorActions.style.display = "none";
 
             try {
-                await AdaptiveReaderCV.initialize();
+                await AdaptiveReaderCV.initialize(function (status) {
+                    loadingStatusText.textContent = status;
+                });
             } catch (error) {
                 console.error("[Boot] Fatal error:", error);
                 loadingSpinner.style.display = "none";

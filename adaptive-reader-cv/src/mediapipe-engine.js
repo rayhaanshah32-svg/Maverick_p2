@@ -47,16 +47,29 @@ const MediaPipeEngine = (function () {
             "./mediapipe/tasks-vision-wasm"
         );
 
-        faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-            baseOptions: {
-                modelAssetPath: "./mediapipe/tasks-vision-wasm/face_landmarker.task",
-                delegate: "GPU"
-            },
-            outputFaceBlendshapes: false,
-            outputFacialTransformationMatrixes: true,
-            runningMode: "VIDEO",
-            numFaces: 1
-        });
+        try {
+            faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+                baseOptions: {
+                    modelAssetPath: "./mediapipe/tasks-vision-wasm/face_landmarker.task",
+                    delegate: "GPU"
+                },
+                outputFaceBlendshapes: false,
+                outputFacialTransformationMatrixes: true,
+                runningMode: "VIDEO",
+                numFaces: 1
+            });
+        } catch (gpuError) {
+            faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+                baseOptions: {
+                    modelAssetPath: "./mediapipe/tasks-vision-wasm/face_landmarker.task",
+                    delegate: "CPU"
+                },
+                outputFaceBlendshapes: false,
+                outputFacialTransformationMatrixes: true,
+                runningMode: "VIDEO",
+                numFaces: 1
+            });
+        }
 
         return true;
     }

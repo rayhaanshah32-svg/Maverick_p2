@@ -2,11 +2,18 @@ const AdaptiveReaderCV = (function () {
 
     let isInitialized = false;
 
-    async function initialize() {
+    async function initialize(statusCallback) {
         if (isInitialized) {
             return;
         }
 
+        function updateStatus(message) {
+            if (typeof statusCallback === "function") {
+                statusCallback(message);
+            }
+        }
+
+        updateStatus("Requesting webcam access…");
         console.log("[AdaptiveReaderCV] Starting initialization…");
 
         await CameraManager.startCamera();
@@ -14,6 +21,7 @@ const AdaptiveReaderCV = (function () {
 
         const videoElement = CameraManager.getVideoElement();
 
+        updateStatus("Loading Face Landmarker…");
         console.log("[AdaptiveReaderCV] Waiting for MediaPipe module globals…");
         await window.mediapipeReadyPromise;
 
@@ -28,6 +36,7 @@ const AdaptiveReaderCV = (function () {
             delete window.Module;
         }
 
+        updateStatus("Initializing WebGazer eye tracker…");
         await setupWebGazer(videoElement);
         console.log("[AdaptiveReaderCV] WebGazer ready.");
 

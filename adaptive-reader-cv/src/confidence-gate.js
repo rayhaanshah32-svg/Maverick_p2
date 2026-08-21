@@ -125,7 +125,9 @@ const ConfidenceGate = (function () {
 
         if (isExtremeHeadMove) {
             headOutOfRangeStartTime = null;
-            EventAPI.emitRecalibrationNeeded("head_pose_out_of_range");
+            if (typeof CalibrationUI !== "undefined" && !CalibrationUI.isCalibratingNow()) {
+                EventAPI.emitRecalibrationNeeded("head_pose_out_of_range");
+            }
             return {
                 allowed: false,
                 confidence: 0,
@@ -139,7 +141,9 @@ const ConfidenceGate = (function () {
                 headOutOfRangeStartTime = now;
             } else if (now - headOutOfRangeStartTime > SUSTAINED_HEAD_MOVE_MS) {
                 headOutOfRangeStartTime = null;
-                EventAPI.emitRecalibrationNeeded("head_pose_out_of_range");
+                if (typeof CalibrationUI !== "undefined" && !CalibrationUI.isCalibratingNow()) {
+                    EventAPI.emitRecalibrationNeeded("head_pose_out_of_range");
+                }
             }
             return {
                 allowed: false,

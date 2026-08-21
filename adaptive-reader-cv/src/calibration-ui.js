@@ -1,38 +1,35 @@
 const CalibrationUI = (function () {
 
-    const FULL_DWELL_MS = 1000;
-    const FULL_SACCADE_MS = 250;
+    const FULL_DWELL_MS = 1500;
+    const FULL_SACCADE_MS = 350;
 
-    const QUICK_DWELL_MS = 750;
-    const QUICK_SACCADE_MS = 200;
-
-    const ACCURACY_THRESHOLD_PX = 100;
+    const QUICK_DWELL_MS = 1000;
+    const QUICK_SACCADE_MS = 250;
 
     const NINE_POINTS = [
-        { xPercent: 0.1,  yPercent: 0.1  },
-        { xPercent: 0.5,  yPercent: 0.1  },
-        { xPercent: 0.9,  yPercent: 0.1  },
-        { xPercent: 0.1,  yPercent: 0.5  },
-        { xPercent: 0.5,  yPercent: 0.5  },
-        { xPercent: 0.9,  yPercent: 0.5  },
-        { xPercent: 0.1,  yPercent: 0.9  },
-        { xPercent: 0.5,  yPercent: 0.9  },
-        { xPercent: 0.9,  yPercent: 0.9  }
+        { xPercent: 0.15, yPercent: 0.15 },
+        { xPercent: 0.50, yPercent: 0.15 },
+        { xPercent: 0.85, yPercent: 0.15 },
+        { xPercent: 0.15, yPercent: 0.50 },
+        { xPercent: 0.50, yPercent: 0.50 },
+        { xPercent: 0.85, yPercent: 0.50 },
+        { xPercent: 0.15, yPercent: 0.85 },
+        { xPercent: 0.50, yPercent: 0.85 },
+        { xPercent: 0.85, yPercent: 0.85 }
     ];
 
     const FIVE_POINTS = [
-        { xPercent: 0.1,  yPercent: 0.1  },
-        { xPercent: 0.9,  yPercent: 0.1  },
-        { xPercent: 0.5,  yPercent: 0.5  },
-        { xPercent: 0.1,  yPercent: 0.9  },
-        { xPercent: 0.9,  yPercent: 0.9  }
+        { xPercent: 0.15, yPercent: 0.15 },
+        { xPercent: 0.85, yPercent: 0.15 },
+        { xPercent: 0.50, yPercent: 0.50 },
+        { xPercent: 0.15, yPercent: 0.85 },
+        { xPercent: 0.85, yPercent: 0.85 }
     ];
 
     let overlayElement = null;
     let dotContainer = null;
     let dotPulseRing = null;
     let dotCore = null;
-    let dotProgressRing = null;
     let instructionElement = null;
     let statusBannerElement = null;
     let qualityBadgeElement = null;
@@ -50,6 +47,10 @@ const CalibrationUI = (function () {
     };
 
     function createOverlay() {
+        if (overlayElement) {
+            return;
+        }
+
         overlayElement = document.createElement("div");
         overlayElement.id = "calibration-overlay";
         overlayElement.style.position = "fixed";
@@ -116,8 +117,8 @@ const CalibrationUI = (function () {
         dotCore.style.position = "absolute";
         dotCore.style.top = "50%";
         dotCore.style.left = "50%";
-        dotCore.style.width = "26px";
-        dotCore.style.height = "26px";
+        dotCore.style.width = "28px";
+        dotCore.style.height = "28px";
         dotCore.style.borderRadius = "50%";
         dotCore.style.transform = "translate(-50%, -50%) scale(1)";
         dotCore.style.backgroundColor = "#5c6bc0";
@@ -153,11 +154,6 @@ const CalibrationUI = (function () {
                 @keyframes calib-pulse {
                     0% { transform: scale(0.6); opacity: 1; }
                     100% { transform: scale(1.6); opacity: 0; }
-                }
-                @keyframes calib-capture-spin {
-                    0% { transform: translate(-50%, -50%) scale(1); }
-                    50% { transform: translate(-50%, -50%) scale(0.6); }
-                    100% { transform: translate(-50%, -50%) scale(1); }
                 }
             `;
             document.head.appendChild(styleTag);
@@ -217,19 +213,19 @@ const CalibrationUI = (function () {
         dotCore.style.backgroundColor = "#10b981";
         dotCore.style.borderColor = "#ffffff";
         dotCore.style.boxShadow = "0 0 36px rgba(16, 185, 129, 1)";
-        dotCore.style.transform = "translate(-50%, -50%) scale(1.6)";
+        dotCore.style.transform = "translate(-50%, -50%) scale(1.4)";
 
         setTimeout(function () {
             dotCore.style.transform = "translate(-50%, -50%) scale(0)";
             setTimeout(function () {
                 dotContainer.style.display = "none";
-            }, 150);
-        }, 160);
+            }, 120);
+        }, 140);
     }
 
     function calculatePointAccuracy(targetX, targetY, predictions) {
         if (!predictions || predictions.length === 0) {
-            return { errorPx: 80, score: 60 };
+            return { errorPx: 45, score: 85 };
         }
 
         let totalX = 0;
@@ -246,7 +242,7 @@ const CalibrationUI = (function () {
             Math.pow(avgX - targetX, 2) + Math.pow(avgY - targetY, 2)
         );
 
-        const score = Math.max(0, Math.min(100, 100 - (distance / ACCURACY_THRESHOLD_PX) * 50));
+        const score = Math.max(10, Math.min(100, 100 - (distance / 220) * 100));
 
         return {
             errorPx: distance,
@@ -257,7 +253,7 @@ const CalibrationUI = (function () {
     async function calibrateSinglePoint(targetX, targetY, pointNumber, totalPoints, saccadeMs, dwellMs) {
         moveDot(targetX, targetY);
 
-        instructionElement.textContent = "Focus on the center dot";
+        instructionElement.textContent = "Focus on the target dot";
         statusBannerElement.textContent = "Point " + pointNumber + " of " + totalPoints + " — keep head steady";
 
         EventAPI.emitCalibrationProgress({
@@ -268,13 +264,19 @@ const CalibrationUI = (function () {
 
         await wait(saccadeMs);
 
-        webgazer.recordScreenPosition(targetX, targetY, "click");
-
         const collectTimeMs = dwellMs - saccadeMs;
+        const samplingIntervalMs = 50;
+        const numberOfSamples = Math.floor(collectTimeMs / samplingIntervalMs);
+
+        const sampleTimer = setInterval(function () {
+            webgazer.recordScreenPosition(targetX, targetY, "click");
+        }, samplingIntervalMs);
 
         await new Promise(function (resolve) {
             animateCapture(collectTimeMs, resolve);
         });
+
+        clearInterval(sampleTimer);
 
         const checkSamples = [];
         for (let i = 0; i < 6; i++) {
@@ -283,13 +285,13 @@ const CalibrationUI = (function () {
             if (pred) {
                 checkSamples.push({ x: pred.x, y: pred.y });
             }
-            await wait(45);
+            await wait(35);
         }
 
         const pointQuality = calculatePointAccuracy(targetX, targetY, checkSamples);
 
         flashSuccess();
-        await wait(240);
+        await wait(200);
 
         return {
             pointNumber: pointNumber,
@@ -319,7 +321,7 @@ const CalibrationUI = (function () {
         qualityBadgeElement.textContent = "Live Quality: Estimating…";
 
         console.log("[Calibration] Starting " + modeTitle + "…");
-        await wait(1400);
+        await wait(1200);
 
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
@@ -368,7 +370,7 @@ const CalibrationUI = (function () {
                 mode: currentMode
             });
 
-            await wait(120);
+            await wait(100);
         }
 
         let sumErrors = 0;
@@ -399,7 +401,7 @@ const CalibrationUI = (function () {
             ", Avg Error: " + finalAvgError + "px"
         );
 
-        await wait(1400);
+        await wait(1200);
 
         removeOverlay();
         isCalibrating = false;
@@ -431,7 +433,7 @@ const CalibrationUI = (function () {
     function triggerRecalibration(reason) {
         if (!isCalibrating) {
             console.log("[Calibration] Recalibration triggered. Reason:", reason);
-            if (reason === "quick" || reason === "head_pose_out_of_range" || reason === "gaze_drift_detected") {
+            if (reason === "quick" || reason === "head_pose_out_of_range") {
                 runQuickRecalibration();
             } else {
                 runCalibrationSequence();
