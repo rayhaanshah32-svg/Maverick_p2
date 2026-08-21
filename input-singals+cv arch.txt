@@ -1,0 +1,40 @@
+Architecture sketch
+Webcam → MediaPipe Face Landmarker (30fps)
+   → raw landmarks: iris center (L/R), eye contour points, head pose (pitch/yaw/roll), eye-aspect-ratio
+   → 9-point calibration → regression model (ridge/SVR) → screen gaze coords (x,y)
+   → temporal signal processor (windowed, e.g. 1-5s rolling)
+   → struggle/confusion classifier → adaptation engine → UI adjustments
+Signals to extract (your CV layer's output)
+
+Gaze/fixation signals
+
+Gaze point (x,y) on screen, mapped to text region/word/line
+Fixation duration per word/passage (how long gaze lingers before moving on)
+Regression count — how often gaze jumps backward to re-read a word/line (a strong dyslexia signal; frequent regressions = decoding difficulty)
+Saccade velocity/pattern — erratic, short saccades vs smooth left-to-right sweep
+Line-skipping / re-reading of same line detection
+Reading path linearity (deviation from expected left-to-right, top-to-bottom scan path)
+
+Blink signals
+
+Blink rate (blinks/min) — elevated rate often correlates with cognitive load/fatigue/strain
+Blink duration — longer blinks can indicate fatigue
+Eye-aspect-ratio (EAR) trend over session
+
+Head pose / posture
+
+Head tilt/lean-in (leaning toward screen often = struggling to parse)
+Head pose stability (fidgeting/instability = frustration)
+Distance-from-screen changes (via face bounding box scale)
+
+Temporal/behavioral
+
+Time-on-passage vs expected reading time for that word count/difficulty (WPM benchmark deviation)
+Pause frequency and pause duration mid-passage
+Idle/away detection (face not detected = looked away, don't misfire adaptations)
+
+Derived/composite metrics (this is your "intelligence" layer)
+
+Reading fluency score = f(WPM, regression count, fixation duration)
+Frustration/confusion index = weighted combination of (regression rate ↑, blink rate ↑, head instability ↑, time-on-passage ↑ relative to baseline)
+Per-word "difficulty heatmap" — which specific words/passages trigger the most regressions/fixation time (useful both for adaptation AND for showing the user/teacher analytics later)
