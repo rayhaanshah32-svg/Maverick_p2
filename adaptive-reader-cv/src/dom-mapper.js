@@ -57,6 +57,10 @@ const DOMMapper = (function () {
                 attributes: true
             });
         }
+
+        if (containerElement) {
+            containerElement.addEventListener("scroll", debouncedRebuild, { passive: true });
+        }
     }
 
     function extractLinesFromParagraphUsingRange(paragraphElement, paragraphIndex, startGlobalLineIndex) {
@@ -259,7 +263,7 @@ const DOMMapper = (function () {
             const box = lineBoundingBoxes[i];
 
             const inVerticalBounds = scrollAdjustedY >= box.top && scrollAdjustedY <= box.bottom;
-            const inHorizontalBounds = gazeX >= box.left && gazeX <= box.right;
+            const inHorizontalBounds = scrollAdjustedX >= box.left && scrollAdjustedX <= box.right;
 
             if (inVerticalBounds && inHorizontalBounds) {
                 const lineCenterY = (box.top + box.bottom) / 2;

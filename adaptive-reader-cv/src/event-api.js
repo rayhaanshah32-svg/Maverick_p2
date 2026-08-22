@@ -1,21 +1,10 @@
 const EventAPI = (function () {
 
-    const listeners = {
-        onGazeUpdate: [],
-        onCalibrationComplete: [],
-        onFaceQualityChange: [],
-        onRecalibrationNeeded: [],
-        onBaselineComplete: [],
-        onCalibrationProgress: [],
-        onSignalQualityUpdate: [],
-        onCalibrationQualityLive: [],
-        onSystemReady: []
-    };
+    const listeners = {};
 
     function on(eventName, callback) {
         if (!listeners[eventName]) {
-            console.warn("EventAPI: Unknown event name:", eventName);
-            return;
+            listeners[eventName] = [];
         }
         listeners[eventName].push(callback);
     }
@@ -24,9 +13,13 @@ const EventAPI = (function () {
         if (!listeners[eventName]) {
             return;
         }
-        listeners[eventName] = listeners[eventName].filter(function (item) {
-            return item !== callback;
-        });
+        const newListeners = [];
+        for (let i = 0; i < listeners[eventName].length; i++) {
+            if (listeners[eventName][i] !== callback) {
+                newListeners.push(listeners[eventName][i]);
+            }
+        }
+        listeners[eventName] = newListeners;
     }
 
     function emit(eventName, data) {
@@ -37,7 +30,7 @@ const EventAPI = (function () {
             try {
                 listeners[eventName][i](data);
             } catch (error) {
-                console.error("EventAPI: Error in listener for", eventName, error);
+                console.error(error);
             }
         }
     }
@@ -57,9 +50,17 @@ const EventAPI = (function () {
         });
     }
 
-    function emitCalibrationComplete(accuracyScore, mode) {
+    function emitCalibrationComplete(overallScore, mode) {
+        var qualityLabel = "Poor — consider recalibrating";
+        if (overallScore >= 75) {
+            qualityLabel = "Good";
+        } else if (overallScore >= 50) {
+            qualityLabel = "Fair";
+        }
+
         emit("onCalibrationComplete", {
-            accuracyScore: accuracyScore,
+            trackingQuality: qualityLabel,
+            trackingScore: overallScore,
             mode: mode || "full",
             timestamp: Date.now()
         });
@@ -90,6 +91,7 @@ const EventAPI = (function () {
             facePresent: qualityObject.facePresent,
             headPose: qualityObject.headPose,
             blinkState: qualityObject.blinkState,
+            blinkRate: qualityObject.blinkRate,
             timestamp: Date.now()
         });
     }
@@ -131,6 +133,7 @@ const EventAPI = (function () {
     return {
         on: on,
         off: off,
+        emit: emit,
         emitGazeUpdate: emitGazeUpdate,
         emitCalibrationComplete: emitCalibrationComplete,
         emitCalibrationQualityLive: emitCalibrationQualityLive,

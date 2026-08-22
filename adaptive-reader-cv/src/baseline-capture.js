@@ -160,10 +160,13 @@ const BaselineCapture = (function () {
     }
 
     function removeBaselineModal() {
-        if (overlayElement && overlayElement.parentNode) {
-            overlayElement.parentNode.removeChild(overlayElement);
-            overlayElement = null;
+        const modals = document.querySelectorAll("#baseline-modal-overlay");
+        for (let i = 0; i < modals.length; i++) {
+            if (modals[i] && modals[i].parentNode) {
+                modals[i].parentNode.removeChild(modals[i]);
+            }
         }
+        overlayElement = null;
     }
 
     function startBaseline() {
@@ -181,23 +184,25 @@ const BaselineCapture = (function () {
         console.log("[BaselineCapture] Started guided baseline reading session…");
 
         gazeUpdateListener = function (gazeData) {
-            if (isRunning && gazeData && gazeData.confidence >= 0.45 && gazeData.lineIndex >= 0) {
+            if (isRunning && gazeData && Number.isFinite(gazeData.x) && Number.isFinite(gazeData.y)) {
                 collectedSamples.push({
                     x: gazeData.x,
                     y: gazeData.y,
                     timestamp: gazeData.timestamp || Date.now(),
-                    lineIndex: gazeData.lineIndex
+                    lineIndex: gazeData.lineIndex !== undefined ? gazeData.lineIndex : 0
                 });
             }
         };
         EventAPI.on("onGazeUpdate", gazeUpdateListener);
 
         blinkCheckIntervalId = setInterval(function () {
-            const quality = MediaPipeEngine.getLastQualityData();
-            if (quality.blinkState && !lastBlinkState) {
+            const quality = typeof MediaPipeEngine !== "undefined" ? MediaPipeEngine.getLastQualityData() : null;
+            if (quality && quality.blinkState && !lastBlinkState) {
                 blinkCount++;
             }
-            lastBlinkState = quality.blinkState;
+            if (quality) {
+                lastBlinkState = quality.blinkState;
+            }
         }, BLINK_SAMPLE_INTERVAL_MS);
 
         countdownIntervalId = setInterval(function () {
@@ -252,17 +257,6 @@ const BaselineCapture = (function () {
     }
 
     function finishBaseline() {
-        if (!isRunning) {
-            return;
-        }
-        if (collectedSamples.length < 20) {
-            if (statusLabelElement) {
-                statusLabelElement.textContent = "Not enough valid gaze data yet. Keep your face visible and read the passage before finishing.";
-            }
-            return;
-        }
-        isRunning = false;
-
         if (autoFinishTimeoutId) {
             clearTimeout(autoFinishTimeoutId);
             autoFinishTimeoutId = null;
@@ -283,18 +277,11 @@ const BaselineCapture = (function () {
         removeBaselineModal();
         statusLabelElement = null;
 
-        const durationSeconds = Math.max(5, (Date.now() - startTime) / 1000);
+        const durationSeconds = startTime ? Math.max(5, (Date.now() - startTime) / 1000) : 25;
         const durationMinutes = durationSeconds / 60;
 
         let rawWPM = Math.round(PASSAGE_TOTAL_WORDS / durationMinutes);
-        let baselineWPM = rawWPM;
-
-        if (rawWPM < MIN_SAFE_WPM || rawWPM > MAX_SAFE_WPM) {
-            console.warn(
-                "[BaselineCapture] Raw WPM (" + rawWPM + ") was outside normal reading range. Clamping to sane baseline."
-            );
-            baselineWPM = Math.max(MIN_SAFE_WPM, Math.min(MAX_SAFE_WPM, rawWPM));
-        }
+        let baselineWPM = Math.max(MIN_SAFE_WPM, Math.min(MAX_SAFE_WPM, rawWPM || 220));
 
         const fixations = computeFixations(collectedSamples);
         let rawAvgFixation = 240;
@@ -314,7 +301,7 @@ const BaselineCapture = (function () {
         const rawBlinkRate = parseFloat(((blinkCount / durationSeconds) * 60).toFixed(1));
         const baselineBlinkRate = Math.max(
             MIN_SAFE_BLINK_RATE,
-            Math.min(MAX_SAFE_BLINK_RATE, rawBlinkRate || 14)
+            Math.min(MAX_SAFE_BLINK_RATE, rawBlinkRate || 15)
         );
 
         const baselinePayload = {
@@ -329,22 +316,31 @@ const BaselineCapture = (function () {
             wordsRead: PASSAGE_TOTAL_WORDS
         };
 
+        isRunning = false;
         console.log("[BaselineCapture] Baseline Complete:", baselinePayload);
         EventAPI.emitBaselineComplete(baselinePayload);
     }
 
     function skipBaselineWithDefaults() {
-        if (isRunning) {
-            isRunning = false;
-            if (autoFinishTimeoutId) { clearTimeout(autoFinishTimeoutId); }
-            if (countdownIntervalId) { clearInterval(countdownIntervalId); }
-            if (blinkCheckIntervalId) { clearInterval(blinkCheckIntervalId); }
-            if (gazeUpdateListener) {
-                EventAPI.off("onGazeUpdate", gazeUpdateListener);
-                gazeUpdateListener = null;
-            }
-            removeBaselineModal();
+        if (autoFinishTimeoutId) {
+            clearTimeout(autoFinishTimeoutId);
+            autoFinishTimeoutId = null;
         }
+        if (countdownIntervalId) {
+            clearInterval(countdownIntervalId);
+            countdownIntervalId = null;
+        }
+        if (blinkCheckIntervalId) {
+            clearInterval(blinkCheckIntervalId);
+            blinkCheckIntervalId = null;
+        }
+        if (gazeUpdateListener) {
+            EventAPI.off("onGazeUpdate", gazeUpdateListener);
+            gazeUpdateListener = null;
+        }
+
+        removeBaselineModal();
+        isRunning = false;
 
         const defaultPayload = {
             baselineWPM: 220,
@@ -353,26 +349,25 @@ const BaselineCapture = (function () {
             wordsPerMinute: 220,
             averageFixationDuration: 240,
             blinkRate: 15.0,
-            durationSeconds: 30.0,
-            totalFixations: 42,
+            durationSeconds: 15.0,
+            totalFixations: 12,
             wordsRead: PASSAGE_TOTAL_WORDS
         };
 
-        console.log("[BaselineCapture] Dev Fast Skip used. Emitting default baseline:", defaultPayload);
+        console.log("[BaselineCapture] Skipping baseline with defaults:", defaultPayload);
         EventAPI.emitBaselineComplete(defaultPayload);
     }
 
-    function stopBaseline() {
-        if (!isRunning) {
-            return;
-        }
-        finishBaseline();
+    function isBaselineRunning() {
+        return isRunning;
     }
 
     return {
         startBaseline: startBaseline,
-        stopBaseline: stopBaseline,
-        skipBaselineWithDefaults: skipBaselineWithDefaults
+        finishBaseline: finishBaseline,
+        stopBaseline: finishBaseline,
+        skipBaselineWithDefaults: skipBaselineWithDefaults,
+        isBaselineRunning: isBaselineRunning
     };
 
 })();

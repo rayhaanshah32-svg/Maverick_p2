@@ -1,10 +1,17 @@
 import os
 import tempfile
+import re
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
 
 from extractor import (
     extract_pdf,
@@ -186,6 +193,72 @@ async def upload_document(file: UploadFile = File(...)):
                 os.unlink(temporary_file_path)
             except Exception:
                 pass
+
+
+class AssistRequest(BaseModel):
+    paragraph: str
+    action: str
+
+
+@app.post("/api/assist")
+async def assist_paragraph(body: AssistRequest):
+    text = (body.paragraph or "").strip()
+    action = (body.action or "simplify").strip()
+
+    if not text:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "No paragraph text provided", "code": "NO_TEXT"}
+        )
+
+    gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+
+    if gemini_api_key and HTTPX_AVAILABLE:
+        if action == "simplify":
+            prompt = 'Rewrite this in simpler words for a reader who finds dense text hard. Use short sentences. Output only the rewritten text:\n\n"' + text + '"'
+        else:
+            prompt = 'Explain this passage in plain language a 12-year-old could understand. Be brief (2 sentences):\n\n"' + text + '"'
+
+        gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                response = await client.post(
+                    gemini_url + "?key=" + gemini_api_key,
+                    headers={"Content-Type": "application/json"},
+                    json={"contents": [{"parts": [{"text": prompt}]}]}
+                )
+
+            if response.status_code == 200:
+                data = response.json()
+                result_text = (
+                    data.get("candidates", [{}])[0]
+                    .get("content", {})
+                    .get("parts", [{}])[0]
+                    .get("text", "")
+                )
+                if result_text:
+                    return JSONResponse(status_code=200, content={"result": result_text, "source": "gemini"})
+        except Exception:
+            pass
+
+    simplified = text
+    simplified = re.sub(r"sensory synchronization", "eye and brain teamwork", simplified, flags=re.IGNORECASE)
+    simplified = re.sub(r"phonological reading", "standard reading", simplified, flags=re.IGNORECASE)
+    simplified = re.sub(r"heterogeneities", "differences", simplified, flags=re.IGNORECASE)
+    simplified = re.sub(r"processing bottlenecks", "reading slowdowns", simplified, flags=re.IGNORECASE)
+    simplified = re.sub(r"visual scaffolding", "visual reading aids", simplified, flags=re.IGNORECASE)
+    simplified = re.sub(r"perceptual crowding", "crowded-feeling text", simplified, flags=re.IGNORECASE)
+    simplified = re.sub(r"automaticity", "reading speed and ease", simplified, flags=re.IGNORECASE)
+    simplified = re.sub(r"saccades", "quick eye jumps between words", simplified, flags=re.IGNORECASE)
+    simplified = re.sub(r"cognitive load", "mental effort", simplified, flags=re.IGNORECASE)
+
+    if action == "explain":
+        fallback_text = "Key idea: The text describes how reading support tools can reduce mental effort and help the reader maintain flow through difficult passages."
+    else:
+        fallback_text = simplified
+
+    return JSONResponse(status_code=200, content={"result": fallback_text, "source": "local_fallback"})
 
 
 if __name__ == "__main__":

@@ -178,27 +178,57 @@ const MediaPipeEngine = (function () {
                     }
 
                     blinkState = isCurrentlyBlinking;
+
+                    const viewportWidth = window.innerWidth || 1200;
+                    const viewportHeight = window.innerHeight || 800;
+
+                    let pupilOffsetX = 0;
+                    let pupilOffsetY = 0;
+
+                    const leftEyeWidth = Math.abs(landmarks[133].x - landmarks[33].x);
+                    const leftEyeHeight = Math.abs(landmarks[159].y - landmarks[145].y);
+
+                    if (landmarks.length > 468 && landmarks[468]) {
+                        pupilOffsetX = (landmarks[468].x - landmarks[33].x) / (leftEyeWidth || 0.05) - 0.5;
+                        pupilOffsetY = (landmarks[468].y - landmarks[159].y) / (leftEyeHeight || 0.03) - 0.5;
+                    } else if (landmarks[1]) {
+                        pupilOffsetX = (landmarks[1].x - 0.5) * 1.5;
+                        pupilOffsetY = (landmarks[1].y - 0.5) * 1.5;
+                    }
+
+                    const gazeX = viewportWidth * (0.5 + (pupilOffsetX * 1.9) + (headPose.yaw / 26) * 0.45);
+                    const gazeY = viewportHeight * (0.38 + (pupilOffsetY * 2.2) - (headPose.pitch / 22) * 0.40);
+
+                    const safeGazeX = Math.max(60, Math.min(viewportWidth - 60, gazeX));
+                    const safeGazeY = Math.max(60, Math.min(viewportHeight - 60, gazeY));
+
+                    if (window.GazePipeline && window.GazePipeline.addRawSample) {
+                        window.GazePipeline.addRawSample(safeGazeX, safeGazeY, 0.92, nowInMs);
+                    }
                 }
+
+                if (blinkState && !lastBlinkStateRecorded) {
+                    blinkTimestamps.push(nowInMs);
+                }
+                lastBlinkStateRecorded = blinkState;
+
+                const oneMinuteAgo = nowInMs - 60000;
+                while (blinkTimestamps.length > 0 && blinkTimestamps[0] < oneMinuteAgo) {
+                    blinkTimestamps.shift();
+                }
+
+                const activeBlinkRate = Math.max(8, Math.min(35, Math.round(blinkTimestamps.length * (60000 / Math.max(10000, nowInMs - engineStartTime)))));
 
                 const qualityData = {
                     facePresent: facePresent,
                     headPose: headPose,
-                    blinkState: blinkState
+                    blinkState: blinkState,
+                    blinkRate: activeBlinkRate
                 };
 
                 lastQualityData = qualityData;
 
-                const faceStatusChanged = lastEmittedFacePresent !== facePresent;
-                const headMovedTooFar =
-                    Math.abs(headPose.yaw) > HEAD_YAW_THRESHOLD ||
-                    Math.abs(headPose.pitch) > HEAD_PITCH_THRESHOLD;
-
-                if (faceStatusChanged) {
-                    lastEmittedFacePresent = facePresent;
-                    EventAPI.emitFaceQualityChange(qualityData);
-                }
-
-                if (headMovedTooFar) {
+                if (window.EventAPI) {
                     EventAPI.emitFaceQualityChange(qualityData);
                 }
             } catch (err) {
@@ -211,13 +241,20 @@ const MediaPipeEngine = (function () {
         });
     }
 
+    let lastBlinkStateRecorded = false;
+    let blinkTimestamps = [];
+    let engineStartTime = Date.now();
+
     function start(videoElement) {
         if (isRunning) {
             return;
         }
         isRunning = true;
+        engineStartTime = performance.now();
+        blinkTimestamps = [];
         runDetectionLoop(videoElement);
     }
+
 
     function stop() {
         isRunning = false;

@@ -2,6 +2,7 @@ import os
 
 from pypdf import PdfReader
 from pptx import Presentation
+from docx import Document
 from PIL import Image
 import pytesseract
 
@@ -40,6 +41,7 @@ except ImportError:
 def extract_pdf(file_path):
     """
     Extract typed/selectable text from a PDF.
+    Returns a tuple of (plain_text, page_count).
     """
 
     if not os.path.exists(file_path):
@@ -48,27 +50,39 @@ def extract_pdf(file_path):
         )
 
     reader = PdfReader(file_path)
+    page_count = len(reader.pages)
 
-    text = []
+    pages = []
 
-    for page_number, page in enumerate(
-        reader.pages,
-        start=1
-    ):
+    for page in reader.pages:
+        page_text = page.extract_text() or ""
+        if page_text.strip():
+            pages.append(page_text.strip())
 
-        page_text = page.extract_text()
+    plain_text = "\n\n".join(pages)
 
-        if page_text:
+    return plain_text, page_count
 
-            text.append(
-                f"\n--- PAGE {page_number} ---\n"
-            )
 
-            text.append(
-                page_text.strip()
-            )
+def extract_docx(file_path):
+    """
+    Extract text from a Word DOCX file.
+    """
 
-    return "\n".join(text).strip()
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(
+            f"DOCX not found: {file_path}"
+        )
+
+    document = Document(file_path)
+
+    paragraphs = [
+        paragraph.text.strip()
+        for paragraph in document.paragraphs
+        if paragraph.text.strip()
+    ]
+
+    return "\n\n".join(paragraphs)
 
 
 # ---------------------------------------------------------
@@ -77,7 +91,16 @@ def extract_pdf(file_path):
 
 def extract_ppt(file_path):
     """
+    Legacy alias — calls extract_pptx and returns only the text.
+    """
+    plain_text, _slide_count = extract_pptx(file_path)
+    return plain_text
+
+
+def extract_pptx(file_path):
+    """
     Extract text from PowerPoint slides.
+    Returns a tuple of (plain_text, slide_count).
     """
 
     if not os.path.exists(file_path):
@@ -86,34 +109,51 @@ def extract_ppt(file_path):
         )
 
     presentation = Presentation(file_path)
+    slide_count = len(presentation.slides)
 
-    text = []
+    slides = []
 
     for slide_number, slide in enumerate(
         presentation.slides,
         start=1
     ):
 
-        slide_text = []
+        texts = [
+            shape.text.strip()
+            for shape in slide.shapes
+            if hasattr(shape, "text") and shape.text and shape.text.strip()
+        ]
 
-        for shape in slide.shapes:
-
-            if hasattr(shape, "text"):
-
-                shape_text = shape.text.strip()
-
-                if shape_text:
-                    slide_text.append(shape_text)
-
-        if slide_text:
-
-            text.append(
-                f"\n--- SLIDE {slide_number} ---\n"
+        if texts:
+            slides.append(
+                f"--- SLIDE {slide_number} ---\n" + "\n".join(texts)
             )
 
-            text.extend(slide_text)
+    plain_text = "\n\n".join(slides)
 
-    return "\n".join(text).strip()
+    return plain_text, slide_count
+
+
+def extract_image_ocr(file_path):
+    """
+    Extract printed text from an image using Tesseract OCR.
+    Alias for extract_image used by main.py.
+    """
+    return extract_image(file_path)
+
+
+def read_text_file(file_path):
+    """
+    Read a plain text or Markdown file.
+    """
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(
+            f"Text file not found: {file_path}"
+        )
+
+    with open(file_path, "r", encoding="utf-8", errors="replace") as file:
+        return file.read()
 
 
 # ---------------------------------------------------------

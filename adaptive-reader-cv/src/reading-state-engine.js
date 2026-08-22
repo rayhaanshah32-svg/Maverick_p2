@@ -77,32 +77,31 @@ const ReadingStateEngine = (function () {
 
     function emit(eventName, data) {
         var listeners = eventListeners[eventName];
-        if (!listeners || listeners.length === 0) {
-            return;
-        }
-        for (var i = 0; i < listeners.length; i++) {
-            try {
-                listeners[i](data);
-            } catch (error) {
-                console.error("[ReadingStateEngine] Listener error for", eventName, error);
+        if (listeners && listeners.length > 0) {
+            for (var i = 0; i < listeners.length; i++) {
+                try {
+                    listeners[i](data);
+                } catch (error) {
+                    console.error(error);
+                }
             }
+        }
+        if (window.EventAPI && window.EventAPI.emit) {
+            window.EventAPI.emit(eventName, data);
         }
     }
 
     function isSignalUsableNow(sampleConfidence) {
-        if (!lastFacePresent) {
-            return false;
+        if (sampleConfidence !== undefined && sampleConfidence > 0.1) {
+            return true;
         }
-        if (lastBlinkState) {
-            return false;
+        if (currentSignalQuality >= 30) {
+            return true;
         }
-        if (currentSignalQuality < MIN_QUALITY_SCORE) {
-            return false;
+        if (lastFacePresent) {
+            return true;
         }
-        if (sampleConfidence < MIN_CONFIDENCE) {
-            return false;
-        }
-        return true;
+        return false;
     }
 
     function pushToGazeBuffer(sample) {
@@ -555,7 +554,7 @@ const ReadingStateEngine = (function () {
             return;
         }
 
-        var confidence = gazeData.confidence || 0;
+        var confidence = gazeData.confidence || 0.85;
         var usable = isSignalUsableNow(confidence);
         signalIsUsable = usable;
 

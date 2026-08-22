@@ -35,15 +35,17 @@ const AdaptationContract = (function () {
 
     function emit(eventName, data) {
         var listeners = eventListeners[eventName];
-        if (!listeners || listeners.length === 0) {
-            return;
-        }
-        for (var i = 0; i < listeners.length; i++) {
-            try {
-                listeners[i](data);
-            } catch (error) {
-                console.error("[AdaptationContract] Listener error for", eventName, error);
+        if (listeners && listeners.length > 0) {
+            for (var i = 0; i < listeners.length; i++) {
+                try {
+                    listeners[i](data);
+                } catch (error) {
+                    console.error(error);
+                }
             }
+        }
+        if (window.EventAPI && window.EventAPI.emit) {
+            window.EventAPI.emit(eventName, data);
         }
     }
 

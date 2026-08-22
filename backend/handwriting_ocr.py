@@ -8,31 +8,26 @@ from PIL import Image
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
 
-# --------------------------------------------------
-# DEVICE
-# --------------------------------------------------
-
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
-print("Using device:", device)
-
-
-# --------------------------------------------------
-# LOAD TrOCR
-# --------------------------------------------------
 
 MODEL_NAME = "microsoft/trocr-base-handwritten"
 
-print("Loading handwriting OCR model...")
+_processor = None
+_model = None
 
-processor = TrOCRProcessor.from_pretrained(MODEL_NAME)
 
-model = VisionEncoderDecoderModel.from_pretrained(MODEL_NAME)
+def _load_model_if_needed():
+    global _processor, _model
+    if _processor is not None and _model is not None:
+        return
 
-model.to(device)
-model.eval()
+    print("Loading handwriting OCR model...")
+    _processor = TrOCRProcessor.from_pretrained(MODEL_NAME)
+    _model = VisionEncoderDecoderModel.from_pretrained(MODEL_NAME)
+    _model.to(device)
+    _model.eval()
+    print("Handwriting OCR model loaded.")
 
-print("Handwriting OCR model loaded.")
 
 
 # --------------------------------------------------
@@ -42,12 +37,14 @@ print("Handwriting OCR model loaded.")
 def recognize_line(image):
     """Recognize handwritten text from one image/line."""
 
+    _load_model_if_needed()
+
     if not isinstance(image, Image.Image):
         image = Image.fromarray(image)
 
     image = image.convert("RGB")
 
-    pixel_values = processor(
+    pixel_values = _processor(
         images=image,
         return_tensors="pt"
     ).pixel_values
@@ -55,12 +52,12 @@ def recognize_line(image):
     pixel_values = pixel_values.to(device)
 
     with torch.no_grad():
-        generated_ids = model.generate(
+        generated_ids = _model.generate(
             pixel_values,
             max_new_tokens=128
         )
 
-    text = processor.batch_decode(
+    text = _processor.batch_decode(
         generated_ids,
         skip_special_tokens=True
     )[0]

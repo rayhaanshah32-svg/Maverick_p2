@@ -52,13 +52,6 @@ const AdaptiveReaderCV = (function () {
             CalibrationUI.triggerRecalibration(eventData.reason);
         });
 
-        EventAPI.on("onCalibrationComplete", function (data) {
-            console.log("[AdaptiveReaderCV] Calibration complete. Launching baseline reading in 1.2s…");
-            setTimeout(function () {
-                startBaseline();
-            }, 1200);
-        });
-
         setupKeyboardShortcuts();
 
         isInitialized = true;
