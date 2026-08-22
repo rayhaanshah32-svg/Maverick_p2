@@ -1,30 +1,40 @@
 from extractor import extract_text
+import os
 
 
-def test_file(file_path):
+def extract_and_save(input_file, output_file):
     print("\n" + "=" * 70)
-    print("FILE:", file_path)
+    print("INPUT FILE:", input_file)
     print("=" * 70)
 
     try:
-        text = extract_text(file_path)
+        text = extract_text(input_file)
 
         if text:
             print("\nEXTRACTED TEXT:\n")
             print(text)
+
+            # Save extracted text to a TXT file
+            with open(output_file, "w", encoding="utf-8") as file:
+                file.write(text)
+
+            print("\n" + "=" * 70)
+            print("TEXT SAVED SUCCESSFULLY")
+            print("OUTPUT FILE:", output_file)
+            print("=" * 70)
+
         else:
             print("\nNo text was detected.")
 
     except Exception as e:
-        print("\nERROR:")
-        print(e)
+        print("\nERROR:", e)
 
 
-# Test PDF
-test_file("test.pdf")
+# PDF
+extract_and_save("test.pdf", "extracted_pdf.txt")
 
-# Test PowerPoint
-test_file("test.pptx")
+# PowerPoint
+extract_and_save("test.pptx", "extracted_ppt.txt")
 
-# Test Image
-test_file("test.jpg")
+# JPG/JPEG
+extract_and_save("test.jpg", "extracted_image.txt")

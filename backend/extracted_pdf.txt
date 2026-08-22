@@ -1,0 +1,5 @@
+--- PAGE 1 ---
+
+Adaptive Reader PDF Test Document
+This is the first paragraph on page one of the PDF.
+This is the second paragraph providing reading content.

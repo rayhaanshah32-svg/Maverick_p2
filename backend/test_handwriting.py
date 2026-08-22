@@ -1,7 +1,7 @@
 from handwriting_ocr import extract_handwriting
 
 
-image_file = "handwritten.jpg"
+image_file = "test.jpg"
 
 print("=" * 70)
 print("HANDWRITING OCR TEST")

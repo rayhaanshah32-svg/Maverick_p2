@@ -1,205 +1,405 @@
 import os
-<<<<<<< HEAD
+
 from pypdf import PdfReader
 from pptx import Presentation
 from PIL import Image
 import pytesseract
 
+# ---------------------------------------------------------
+# TESSERACT CONFIGURATION
+# ---------------------------------------------------------
 
-# Tesseract path for Windows
-pytesseract.pytesseract.tesseract_cmd = (
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-)
+# Windows Tesseract installation path
+TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
+if os.path.exists(TESSERACT_PATH):
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+
+
+# ---------------------------------------------------------
+# HANDWRITING OCR
+# ---------------------------------------------------------
+
+# Import TrOCR module.
+# If the handwriting module is unavailable, the normal
+# OCR functions will still work.
+
+try:
+    from handwriting_ocr import extract_handwriting
+
+    HANDWRITING_OCR_AVAILABLE = True
+
+except ImportError:
+    HANDWRITING_OCR_AVAILABLE = False
+
+
+# ---------------------------------------------------------
+# PDF TEXT EXTRACTION
+# ---------------------------------------------------------
 
 def extract_pdf(file_path):
-    """Extract text from PDF."""
+    """
+    Extract typed/selectable text from a PDF.
+    """
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(
+            f"PDF not found: {file_path}"
+        )
+
     reader = PdfReader(file_path)
 
     text = []
 
-    for page_number, page in enumerate(reader.pages, start=1):
+    for page_number, page in enumerate(
+        reader.pages,
+        start=1
+    ):
+
         page_text = page.extract_text()
 
         if page_text:
-            text.append(f"\n--- PAGE {page_number} ---\n")
-            text.append(page_text)
+
+            text.append(
+                f"\n--- PAGE {page_number} ---\n"
+            )
+
+            text.append(
+                page_text.strip()
+            )
 
     return "\n".join(text).strip()
 
 
-def extract_pptx(file_path):
-    """Extract text from PPT/PPTX."""
+# ---------------------------------------------------------
+# PPTX TEXT EXTRACTION
+# ---------------------------------------------------------
+
+def extract_ppt(file_path):
+    """
+    Extract text from PowerPoint slides.
+    """
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(
+            f"PowerPoint file not found: {file_path}"
+        )
+
     presentation = Presentation(file_path)
 
     text = []
 
     for slide_number, slide in enumerate(
-        presentation.slides, start=1
+        presentation.slides,
+        start=1
     ):
+
         slide_text = []
 
         for shape in slide.shapes:
+
             if hasattr(shape, "text"):
-                if shape.text.strip():
-                    slide_text.append(shape.text.strip())
+
+                shape_text = shape.text.strip()
+
+                if shape_text:
+                    slide_text.append(shape_text)
 
         if slide_text:
+
             text.append(
                 f"\n--- SLIDE {slide_number} ---\n"
             )
-            text.append("\n".join(slide_text))
+
+            text.extend(slide_text)
 
     return "\n".join(text).strip()
 
 
+# ---------------------------------------------------------
+# PRINTED IMAGE OCR
+# ---------------------------------------------------------
+
 def extract_image(file_path):
-    """Extract text from JPG/JPEG/PNG using Tesseract OCR."""
-    image = Image.open(file_path)
-
-    text = pytesseract.image_to_string(image)
-
-    return text.strip()
-
-
-def extract_text(file_path):
     """
-    Automatically detect the file type
-    and extract its text.
+    Extract printed text from JPG/JPEG/PNG
+    using Tesseract OCR.
     """
 
     if not os.path.exists(file_path):
         raise FileNotFoundError(
+            f"Image not found: {file_path}"
+        )
+
+    image = Image.open(file_path)
+
+    image = image.convert("RGB")
+
+    text = pytesseract.image_to_string(
+        image
+    )
+
+    return text.strip()
+
+
+# ---------------------------------------------------------
+# IMAGE OCR WITH HANDWRITING FALLBACK
+# ---------------------------------------------------------
+
+def extract_image_with_handwriting(file_path):
+    """
+    Try Tesseract first.
+
+    If Tesseract does not find useful text,
+    use TrOCR handwriting recognition.
+    """
+
+    # -----------------------------------------
+    # STEP 1: TESSERACT
+    # -----------------------------------------
+
+    printed_text = extract_image(
+        file_path
+    )
+
+    if printed_text.strip():
+
+        return printed_text.strip()
+
+    # -----------------------------------------
+    # STEP 2: TROCR
+    # -----------------------------------------
+
+    if HANDWRITING_OCR_AVAILABLE:
+
+        try:
+
+            handwriting_text = extract_handwriting(
+                file_path
+            )
+
+            if handwriting_text:
+
+                return handwriting_text.strip()
+
+        except Exception as error:
+
+            print(
+                "Handwriting OCR failed:",
+                error
+            )
+
+    return ""
+
+
+# ---------------------------------------------------------
+# PDF OCR WITH HANDWRITING FALLBACK
+# ---------------------------------------------------------
+
+def extract_pdf_with_handwriting(file_path):
+    """
+    First attempt normal PDF text extraction.
+
+    If the PDF has no selectable text,
+    use TrOCR on the rendered PDF pages.
+    """
+
+    # -----------------------------------------
+    # STEP 1: NORMAL PDF EXTRACTION
+    # -----------------------------------------
+
+    text = extract_pdf(file_path)
+
+    if text.strip():
+
+        return text.strip()
+
+    # -----------------------------------------
+    # STEP 2: HANDWRITING OCR
+    # -----------------------------------------
+
+    if HANDWRITING_OCR_AVAILABLE:
+
+        try:
+
+            handwriting_text = extract_handwriting(
+                file_path
+            )
+
+            if handwriting_text:
+
+                return handwriting_text.strip()
+
+        except Exception as error:
+
+            print(
+                "Handwriting PDF OCR failed:",
+                error
+            )
+
+    return ""
+
+
+# ---------------------------------------------------------
+# MAIN EXTRACTION FUNCTION
+# ---------------------------------------------------------
+
+def extract_text(file_path):
+    """
+    Automatically determine the file type
+    and extract text.
+
+    Supported:
+
+    PDF
+    PPTX
+    JPG
+    JPEG
+    PNG
+    """
+
+    if not os.path.exists(file_path):
+
+        raise FileNotFoundError(
             f"File not found: {file_path}"
         )
 
-    extension = os.path.splitext(file_path)[1].lower()
+    extension = os.path.splitext(
+        file_path
+    )[1].lower()
+
+
+    # -----------------------------------------
+    # PDF
+    # -----------------------------------------
 
     if extension == ".pdf":
-        return extract_pdf(file_path)
 
-    elif extension in [".ppt", ".pptx"]:
-        return extract_pptx(file_path)
+        return extract_pdf_with_handwriting(
+            file_path
+        )
 
-    elif extension in [".jpg", ".jpeg", ".png"]:
-        return extract_image(file_path)
+
+    # -----------------------------------------
+    # POWERPOINT
+    # -----------------------------------------
+
+    elif extension == ".pptx":
+
+        return extract_ppt(
+            file_path
+        )
+
+
+    # -----------------------------------------
+    # IMAGES
+    # -----------------------------------------
+
+    elif extension in [
+        ".jpg",
+        ".jpeg",
+        ".png"
+    ]:
+
+        return extract_image_with_handwriting(
+            file_path
+        )
+
+
+    # -----------------------------------------
+    # UNSUPPORTED FILE
+    # -----------------------------------------
 
     else:
+
         raise ValueError(
-            f"Unsupported file type: {extension}"
+            "Unsupported file type: "
+            f"{extension}\n"
+            "Supported formats: "
+            "PDF, PPTX, JPG, JPEG, PNG"
         )
-=======
-from cleaner import clean_text, split_into_paragraphs
 
 
-def extract_pdf(file_path):
+# ---------------------------------------------------------
+# SAVE TEXT TO FILE
+# ---------------------------------------------------------
+
+def extract_and_save(
+    input_file,
+    output_file
+):
+    """
+    Extract text and save it into a TXT file.
+    """
+
+    print("\n" + "=" * 70)
+
+    print(
+        "INPUT FILE:",
+        input_file
+    )
+
+    print("=" * 70)
+
     try:
-        import fitz
-        document = fitz.open(file_path)
-        page_results = []
-        full_text_list = []
 
-        page_index = 1
-        for page in document:
-            page_text = page.get_text()
-            if page_text and len(page_text.strip()) > 0:
-                paragraphs = split_into_paragraphs(page_text)
-                for paragraph in paragraphs:
-                    page_results.append({
-                        "page": page_index,
-                        "text": paragraph
-                    })
-                    full_text_list.append(paragraph)
-            page_index = page_index + 1
+        text = extract_text(
+            input_file
+        )
 
-        document.close()
-        combined_text = "\n\n".join(full_text_list)
-        return combined_text, page_results
-    except ImportError:
-        import pypdf
-        reader = pypdf.PdfReader(file_path)
-        page_results = []
-        full_text_list = []
+        if text:
 
-        page_index = 1
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text and len(page_text.strip()) > 0:
-                paragraphs = split_into_paragraphs(page_text)
-                for paragraph in paragraphs:
-                    page_results.append({
-                        "page": page_index,
-                        "text": paragraph
-                    })
-                    full_text_list.append(paragraph)
-            page_index = page_index + 1
+            print(
+                "\nEXTRACTED TEXT:\n"
+            )
 
-        combined_text = "\n\n".join(full_text_list)
-        return combined_text, page_results
+            print(text)
 
+            with open(
+                output_file,
+                "w",
+                encoding="utf-8"
+            ) as file:
 
-def extract_docx(file_path):
-    import docx
-    document = docx.Document(file_path)
-    paragraph_list = []
+                file.write(text)
 
-    for paragraph_item in document.paragraphs:
-        cleaned_item = paragraph_item.text.strip()
-        if len(cleaned_item) > 0:
-            paragraph_list.append(cleaned_item)
+            print(
+                "\nTEXT SAVED SUCCESSFULLY"
+            )
 
-    combined_text = "\n\n".join(paragraph_list)
-    return combined_text
+            print(
+                "OUTPUT FILE:",
+                output_file
+            )
+
+        else:
+
+            print(
+                "\nNo text was detected."
+            )
+
+    except Exception as error:
+
+        print(
+            "\nERROR:",
+            error
+        )
 
 
-def extract_pptx(file_path):
-    import pptx
-    presentation = pptx.Presentation(file_path)
-    slide_results = []
-    full_text_list = []
+# ---------------------------------------------------------
+# DIRECT TESTING
+# ---------------------------------------------------------
 
-    slide_index = 1
-    for slide in presentation.slides:
-        slide_text_pieces = []
-        for shape in slide.shapes:
-            if hasattr(shape, "text"):
-                shape_text = shape.text.strip()
-                if len(shape_text) > 0:
-                    slide_text_pieces.append(shape_text)
+if __name__ == "__main__":
 
-        joined_slide_text = "\n".join(slide_text_pieces)
-        if len(joined_slide_text.strip()) > 0:
-            paragraphs = split_into_paragraphs(joined_slide_text)
-            for paragraph in paragraphs:
-                slide_results.append({
-                    "slide": slide_index,
-                    "text": paragraph
-                })
-                full_text_list.append(paragraph)
-        slide_index = slide_index + 1
+    print(
+        "Adaptive Reader - Text Extraction Module"
+    )
 
-    combined_text = "\n\n".join(full_text_list)
-    return combined_text, slide_results
+    print(
+        "\nSupported formats:"
+    )
 
-
-def extract_image_ocr(file_path):
-    from PIL import Image
-    import pytesseract
-
-    image = Image.open(file_path)
-    extracted_text = pytesseract.image_to_string(image)
-    return clean_text(extracted_text)
-
-
-def read_text_file(file_path):
-    encoding_list = ["utf-8", "utf-8-sig", "latin-1", "cp1252"]
-    for current_encoding in encoding_list:
-        try:
-            with open(file_path, "r", encoding=current_encoding) as text_file:
-                return clean_text(text_file.read())
-        except UnicodeDecodeError:
-            continue
-
-    with open(file_path, "r", encoding="utf-8", errors="replace") as text_file:
-        return clean_text(text_file.read())
->>>>>>> 22fc5f8ddab57ad4f531daf1a9dd4e848e6fec58
+    print(
+        "PDF | PPTX | JPG | JPEG | PNG"
+    )
