@@ -26,6 +26,7 @@ const BaselineCapture = (function () {
     let overlayElement = null;
     let progressBarElement = null;
     let timerLabelElement = null;
+    let statusLabelElement = null;
 
     function createBaselineModal() {
         overlayElement = document.createElement("div");
@@ -83,6 +84,14 @@ const BaselineCapture = (function () {
         instructions.style.lineHeight = "1.5";
         instructions.style.margin = "0";
         card.appendChild(instructions);
+
+        statusLabelElement = document.createElement("p");
+        statusLabelElement.style.color = "#e8a33d";
+        statusLabelElement.style.fontSize = "12px";
+        statusLabelElement.style.lineHeight = "1.5";
+        statusLabelElement.style.margin = "-8px 0 0";
+        statusLabelElement.textContent = "Waiting for valid gaze samples…";
+        card.appendChild(statusLabelElement);
 
         const track = document.createElement("div");
         track.style.height = "6px";
@@ -172,7 +181,7 @@ const BaselineCapture = (function () {
         console.log("[BaselineCapture] Started guided baseline reading session…");
 
         gazeUpdateListener = function (gazeData) {
-            if (isRunning) {
+            if (isRunning && gazeData && gazeData.confidence >= 0.45 && gazeData.lineIndex >= 0) {
                 collectedSamples.push({
                     x: gazeData.x,
                     y: gazeData.y,
@@ -246,6 +255,12 @@ const BaselineCapture = (function () {
         if (!isRunning) {
             return;
         }
+        if (collectedSamples.length < 20) {
+            if (statusLabelElement) {
+                statusLabelElement.textContent = "Not enough valid gaze data yet. Keep your face visible and read the passage before finishing.";
+            }
+            return;
+        }
         isRunning = false;
 
         if (autoFinishTimeoutId) {
@@ -266,6 +281,7 @@ const BaselineCapture = (function () {
         }
 
         removeBaselineModal();
+        statusLabelElement = null;
 
         const durationSeconds = Math.max(5, (Date.now() - startTime) / 1000);
         const durationMinutes = durationSeconds / 60;

@@ -16,7 +16,7 @@ const AdaptiveReaderCV = (function () {
         updateStatus("Requesting webcam access…");
         console.log("[AdaptiveReaderCV] Starting initialization…");
 
-        await CameraManager.startCamera();
+        const cameraStream = await CameraManager.startCamera();
         console.log("[AdaptiveReaderCV] Camera stream acquired.");
 
         const videoElement = CameraManager.getVideoElement();
@@ -37,7 +37,7 @@ const AdaptiveReaderCV = (function () {
         }
 
         updateStatus("Initializing WebGazer eye tracker…");
-        await setupWebGazer(videoElement);
+        await setupWebGazer(videoElement, cameraStream);
         console.log("[AdaptiveReaderCV] WebGazer ready.");
 
         MediaPipeEngine.start(videoElement);
@@ -64,16 +64,18 @@ const AdaptiveReaderCV = (function () {
         isInitialized = true;
 
         EventAPI.emitSystemReady();
+        await startCalibration();
         console.log("[AdaptiveReaderCV] System fully initialized.");
     }
 
-    async function setupWebGazer(videoElement) {
+    async function setupWebGazer(videoElement, cameraStream) {
         webgazer.params.showVideoPreview = false;
         webgazer.params.showPredictionPoints = false;
         webgazer.params.saveDataAcrossSessions = false;
         webgazer.params.applyKalmanFilter = false;
         webgazer.params.showGazeDot = false;
         webgazer.params.faceMeshSolutionPath = "./mediapipe/face_mesh";
+        webgazer.setStaticVideo(cameraStream);
 
         webgazer.setGazeListener(function (gazeData, elapsedTime) {
             GazePipeline.handleIncomingWebGazerPoint(gazeData, elapsedTime);

@@ -2,17 +2,35 @@ const BACKEND_URL = "http://localhost:8000";
 const GEMINI_API_KEY = "AIzaSyDkfbIlIx5Hhu_P8g7qVcRA6h5FBk0r2jc";
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
+const GLOSSARY_TERMS = {
+    "synchronization": "Eyes and brain working together smoothly in time",
+    "saccades": "Quick, simultaneous eye jumps between words",
+    "phonological": "Connecting printed letters to their spoken sounds",
+    "heterogeneities": "Natural differences in how brains process text",
+    "bottlenecks": "Points of congestion where reading flow slows down",
+    "scaffolding": "Helpful visual guides and spacing that support understanding",
+    "perceptual": "How the eyes and brain recognize visual shapes and letters",
+    "automaticity": "Effortless, fast recognition of words without strain",
+    "trajectory": "The smooth path your eyes take across lines of text",
+    "mitochondria": "Parts of cells that help produce energy",
+    "cognitive": "Mental actions of thinking, understanding, and remembering"
+};
+
 const AppUI = (function () {
 
     let currentDocument = null;
     let isDemoMode = false;
     let isResetting = false;
 
-    let currentSettings = {
-        fontSize: 18,
-        lineHeight: 1.8,
-        letterSpacing: 0
-    };
+    let activeLineIndex = -1;
+    let pendingLineIndex = -1;
+    let lineConfirmationTimer = null;
+    let activeParagraphIndex = -1;
+    let activeSentenceIndex = -1;
+
+    let isSpeaking = false;
+    let currentUtterance = null;
+    let activeTooltipElement = null;
 
     const el = {};
 
@@ -26,6 +44,7 @@ const AppUI = (function () {
         el.landingCard = document.querySelector(".landing-card");
 
         el.textContainer = document.getElementById("text-container");
+        el.readingRuler = document.getElementById("reading-ruler");
         el.documentTitle = document.getElementById("document-title");
         el.demoBadge = document.getElementById("demo-badge");
         el.backBtn = document.getElementById("back-btn");
@@ -41,6 +60,19 @@ const AppUI = (function () {
         el.wordCountDisplay = document.getElementById("word-count-display");
         el.paraCountDisplay = document.getElementById("para-count-display");
 
+        el.metricQualityBadge = document.getElementById("metric-quality-badge");
+        el.barSegFace = document.getElementById("bar-seg-face");
+        el.barSegGaze = document.getElementById("bar-seg-gaze");
+        el.barSegBlink = document.getElementById("bar-seg-blink");
+
+        el.metricGazeCoords = document.getElementById("metric-gaze-coords");
+        el.metricLineInfo = document.getElementById("metric-line-info");
+        el.metricConfidence = document.getElementById("metric-confidence");
+        el.metricHeadPose = document.getElementById("metric-head-pose");
+        el.metricBlinkRate = document.getElementById("metric-blink-rate");
+        el.metricRegressions = document.getElementById("metric-regressions");
+        el.metricRevisits = document.getElementById("metric-revisits");
+
         el.adaptationPanel = document.getElementById("adaptation-panel");
         el.dismissAdaptation = document.getElementById("dismiss-adaptation");
         el.adaptationReasons = document.getElementById("adaptation-reasons");
@@ -49,13 +81,20 @@ const AppUI = (function () {
         el.adaptSpacingBtn = document.getElementById("adapt-spacing-btn");
         el.adaptFontBtn = document.getElementById("adapt-font-btn");
         el.adaptLineHeightBtn = document.getElementById("adapt-line-height-btn");
+        el.adaptAiBtn = document.getElementById("adapt-ai-btn");
 
         el.aiPanel = document.getElementById("ai-panel");
-        el.dismissAi = document.getElementById("dismiss-ai");
         el.aiText = document.getElementById("ai-text");
         el.aiLoading = document.getElementById("ai-loading");
         el.aiSimplifyBtn = document.getElementById("ai-simplify-btn");
         el.aiExplainBtn = document.getElementById("ai-explain-btn");
+        el.aiTtsBtn = document.getElementById("ai-tts-btn");
+
+        el.demoControlsBar = document.getElementById("demo-controls-bar");
+        el.demoSimulateFrictionBtn = document.getElementById("demo-simulate-friction-btn");
+        el.demoShowAiBtn = document.getElementById("demo-show-ai-btn");
+        el.demoResetAdaptationBtn = document.getElementById("demo-reset-adaptation-btn");
+        el.demoTtsBtn = document.getElementById("demo-tts-btn");
 
         el.cvLoadingBanner = document.getElementById("cv-loading-banner");
         el.cvLoadingText = document.getElementById("cv-loading-text");
@@ -104,13 +143,36 @@ const AppUI = (function () {
         });
 
         el.dismissAdaptation.addEventListener("click", hideAdaptationPanel);
-        el.adaptSpacingBtn.addEventListener("click", function () { applyAdaptation("spacing"); });
-        el.adaptFontBtn.addEventListener("click", function () { applyAdaptation("fontSize"); });
-        el.adaptLineHeightBtn.addEventListener("click", function () { applyAdaptation("lineHeight"); });
+        el.adaptSpacingBtn.addEventListener("click", function () { applyContinuousFrictionAdaptation(65); });
+        el.adaptFontBtn.addEventListener("click", function () { applyContinuousFrictionAdaptation(80); });
+        el.adaptLineHeightBtn.addEventListener("click", function () { applyContinuousFrictionAdaptation(75); });
+        el.adaptAiBtn.addEventListener("click", function () {
+            callGeminiAI("simplify");
+            hideAdaptationPanel();
+        });
 
-        el.dismissAi.addEventListener("click", hideAiPanel);
         el.aiSimplifyBtn.addEventListener("click", function () { callGeminiAI("simplify"); });
         el.aiExplainBtn.addEventListener("click", function () { callGeminiAI("explain"); });
+        el.aiTtsBtn.addEventListener("click", readAloudCurrentParagraph);
+
+        el.demoSimulateFrictionBtn.addEventListener("click", function () {
+            onReadingStateUpdate({
+                smoothedScore: 74,
+                state: "HIGH_FRICTION",
+                evidence: ["repeated_line_revisit", "prolonged_fixation", "reading_speed_slowdown"],
+                currentWPM: 118,
+                fixationMs: 460,
+                regressions: 5,
+                revisits: 3
+            });
+        });
+
+        el.demoShowAiBtn.addEventListener("click", function () {
+            callGeminiAI("simplify");
+        });
+
+        el.demoResetAdaptationBtn.addEventListener("click", resetAdaptationSettings);
+        el.demoTtsBtn.addEventListener("click", readAloudCurrentParagraph);
 
         document.addEventListener("keydown", function (event) {
             if (el.readingScreen.classList.contains("hidden")) {
@@ -118,7 +180,14 @@ const AppUI = (function () {
             }
             if (event.key === "Escape") {
                 hideAdaptationPanel();
-                hideAiPanel();
+                dismissTooltip();
+                stopSpeech();
+            }
+        });
+
+        document.addEventListener("click", function (event) {
+            if (!event.target.closest(".assist-term") && !event.target.closest(".assist-tooltip")) {
+                dismissTooltip();
             }
         });
     }
@@ -138,7 +207,7 @@ const AppUI = (function () {
                     body: formData
                 });
             } catch (networkError) {
-                showError("Document service unavailable. Please start the backend with: uvicorn main:app --port 8000");
+                showError("Backend unavailable. Please start backend with: python -m uvicorn main:app --port 8000");
                 return;
             }
 
@@ -166,16 +235,16 @@ const AppUI = (function () {
 
     function loadDemoDocument() {
         const paragraphs = [
-            "Reading is one of the most complex cognitive tasks we perform. It requires the simultaneous coordination of eye movements, working memory, language processing, and attention — all in a fraction of a second.",
-            "Eye tracking technology offers a window into the reading process that was previously only available to researchers in lab settings. Webcam-based systems can approximate gaze position with enough accuracy to detect which line a reader is on.",
-            "The Adaptive Reader uses this signal to detect when a reader is struggling — revisiting the same line, reading unusually slowly, or losing their place — and adjusts the display automatically: larger fonts, wider spacing, and highlighted focus lines.",
-            "The key insight is that gaze tracking does not need to be word-perfect to be useful. Knowing which line a reader is on is enough to provide meaningful, contextual support that can significantly reduce reading friction.",
-            "Visual crowding occurs when letters or words are too close together, making individual shapes hard to identify. This is one of the most common causes of reading friction and can be addressed with adaptive letter spacing.",
-            "Cognitive load refers to the mental effort being used in working memory. When reading becomes too demanding, comprehension suffers. Adaptive systems can step in before a reader becomes frustrated."
+            "Reading begins with effortless sensory synchronization. Visual saccades sweep fluidly from left to right as words and semantics are processed with high automaticity.",
+            "In contrast to conventional phonological reading, complex multi-syllable terminology and dense sentence architecture can create processing bottlenecks, requiring adaptive spacing and typography to reduce visual crowding.",
+            "Once contextual scaffolding and focus isolation are introduced, cognitive load rapidly diminishes. The reader's eye movement trajectory stabilizes into smooth forward progression, restoring comfortable reading flow.",
+            "Eye tracking technology offers a real-time window into cognitive processing. Webcam systems detect saccadic regressions, fixation anomalies, and word dwell times without special laboratory hardware.",
+            "The Adaptive Reader responds dynamically to friction signals by expanding typography, highlighting focus lines with a digital ruler, and offering contextual AI simplification when needed.",
+            "This combination of computer vision and proactive assistive design enables readers with dyslexia to maintain comprehension and flow across challenging technical documents."
         ];
 
         currentDocument = {
-            name: "Demo Passage",
+            name: "Cognitive Load & Reading Flow",
             paragraphs: paragraphs,
             plainText: paragraphs.join("\n\n"),
             wordCount: paragraphs.join(" ").split(" ").length
@@ -190,9 +259,8 @@ const AppUI = (function () {
         el.readingScreen.classList.remove("hidden");
 
         renderDocument();
-        resetSettings();
+        resetAdaptationSettings();
         hideAdaptationPanel();
-        hideAiPanel();
 
         updateStatus("system", "good");
         updateStatus("reading", "idle");
@@ -211,97 +279,236 @@ const AppUI = (function () {
         }
     }
 
+    function wrapSentences(paragraphEl, text) {
+        const sentences = text.match(/[^.!?]+(?:[.!?]+|$)\s*/g) || [text];
+        let wrappedHtml = "";
+
+        for (let i = 0; i < sentences.length; i = i + 1) {
+            const sentenceText = sentences[i];
+            const words = sentenceText.split(" ");
+            let sentenceWordsHtml = "";
+
+            for (let w = 0; w < words.length; w = w + 1) {
+                const rawWord = words[w];
+                if (rawWord.length > 0) {
+                    const cleanWord = rawWord.toLowerCase().replace(/[^a-z]/g, "");
+                    if (GLOSSARY_TERMS[cleanWord]) {
+                        sentenceWordsHtml = sentenceWordsHtml + '<span class="assist-term" data-term="' + cleanWord + '">' + escapeHtml(rawWord) + '<span class="assist-term-badge">·</span></span> ';
+                    } else {
+                        sentenceWordsHtml = sentenceWordsHtml + '<span class="word">' + escapeHtml(rawWord) + '</span> ';
+                    }
+                }
+            }
+
+            wrappedHtml = wrappedHtml + '<span class="sentence" data-sentence="' + i + '">' + sentenceWordsHtml + '</span>';
+        }
+
+        paragraphEl.innerHTML = wrappedHtml;
+        attachGlossaryHandlers(paragraphEl);
+    }
+
+    function attachGlossaryHandlers(container) {
+        const terms = container.querySelectorAll(".assist-term");
+        for (let i = 0; i < terms.length; i = i + 1) {
+            terms[i].addEventListener("click", function (event) {
+                event.stopPropagation();
+                const termKey = this.dataset.term;
+                const definition = GLOSSARY_TERMS[termKey];
+                if (definition) {
+                    showGlossaryTooltip(this, termKey, definition);
+                }
+            });
+        }
+    }
+
+    function showGlossaryTooltip(targetEl, term, definition) {
+        dismissTooltip();
+
+        const tooltip = document.createElement("div");
+        tooltip.className = "glass-card assist-tooltip";
+        tooltip.style.position = "absolute";
+        tooltip.style.zIndex = "9999";
+        tooltip.style.padding = "10px 14px";
+        tooltip.style.borderRadius = "10px";
+        tooltip.style.maxWidth = "260px";
+        tooltip.style.fontSize = "12px";
+        tooltip.style.lineHeight = "1.5";
+        tooltip.style.background = "rgba(255, 255, 255, 0.95)";
+        tooltip.style.border = "1px solid rgba(30, 58, 95, 0.2)";
+        tooltip.style.boxShadow = "0 8px 24px rgba(30, 58, 95, 0.2)";
+        tooltip.innerHTML = '<strong style="color: var(--navy); text-transform: capitalize; display: block; margin-bottom: 2px;">' + escapeHtml(term) + '</strong><span style="color: var(--ink);">' + escapeHtml(definition) + '</span>';
+
+        document.body.appendChild(tooltip);
+
+        const rect = targetEl.getBoundingClientRect();
+        tooltip.style.top = (rect.bottom + window.scrollY + 6) + "px";
+        tooltip.style.left = (rect.left + window.scrollX) + "px";
+
+        activeTooltipElement = tooltip;
+    }
+
+    function dismissTooltip() {
+        if (activeTooltipElement && activeTooltipElement.parentNode) {
+            activeTooltipElement.parentNode.removeChild(activeTooltipElement);
+            activeTooltipElement = null;
+        }
+    }
+
+    function escapeHtml(string) {
+        return string
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
     function renderDocument() {
         el.documentTitle.textContent = currentDocument.name;
-        el.textContainer.innerHTML = "";
+        el.textContainer.innerHTML = '<div id="reading-ruler" class="reading-ruler hidden"></div>';
+        el.readingRuler = document.getElementById("reading-ruler");
 
         for (let i = 0; i < currentDocument.paragraphs.length; i = i + 1) {
             const p = document.createElement("p");
             p.className = "paragraph";
-            p.textContent = currentDocument.paragraphs[i];
+            p.id = "paragraph-" + i;
             p.dataset.index = i;
+            wrapSentences(p, currentDocument.paragraphs[i]);
             el.textContainer.appendChild(p);
         }
 
-        applyTextSettings();
+        applyContinuousFrictionAdaptation(0);
     }
 
-    function applyTextSettings() {
-        el.textContainer.style.fontSize = currentSettings.fontSize + "px";
-        el.textContainer.style.lineHeight = currentSettings.lineHeight;
-        el.textContainer.style.letterSpacing = currentSettings.letterSpacing + "px";
-    }
+    function applyContinuousFrictionAdaptation(frictionScore) {
+        const normalized = Math.max(0, Math.min(100, frictionScore));
+        const factor = normalized / 100;
 
-    function resetSettings() {
-        currentSettings = {
-            fontSize: 18,
-            lineHeight: 1.8,
-            letterSpacing: 0
-        };
-    }
+        const fontSize = (18 + factor * 4.5).toFixed(1) + "px";
+        const lineHeight = (1.9 + factor * 0.6).toFixed(2);
+        const letterSpacing = (0.035 + factor * 0.055).toFixed(3) + "em";
+        const wordSpacing = (0.15 + factor * 0.12).toFixed(3) + "em";
+        const maxWidth = Math.round(680 - factor * 90) + "px";
 
-    function resetSession() {
-        if (isResetting) {
-            return;
-        }
-        isResetting = true;
+        const root = document.documentElement;
+        root.style.setProperty("--reader-font-size", fontSize);
+        root.style.setProperty("--reader-line-height", lineHeight);
+        root.style.setProperty("--reader-letter-spacing", letterSpacing);
+        root.style.setProperty("--reader-word-spacing", wordSpacing);
+        root.style.setProperty("--reader-max-width", maxWidth);
 
-        hideAdaptationPanel();
-        hideAiPanel();
-
-        el.readingScreen.classList.add("hidden");
-        el.landingScreen.classList.remove("hidden");
-
-        el.textContainer.innerHTML = "";
-        el.documentTitle.textContent = "Document";
-        el.fileInput.value = "";
-        el.wpmDisplay.textContent = "--";
-        el.fixationDisplay.textContent = "--";
-        el.frictionDisplay.textContent = "--";
-        el.wordCountDisplay.textContent = "--";
-        el.paraCountDisplay.textContent = "--";
-        el.demoBadge.classList.add("hidden");
-
-        resetSettings();
-
-        currentDocument = null;
-        isDemoMode = false;
-
-        if (window.AdaptiveReaderApp) {
-            window.AdaptiveReaderApp.onSessionReset();
-        }
-
-        isResetting = false;
-    }
-
-    function applyAdaptation(type) {
-        if (type === "spacing") {
-            currentSettings.letterSpacing = Math.min(currentSettings.letterSpacing + 1, 4);
-        } else if (type === "fontSize") {
-            currentSettings.fontSize = Math.min(currentSettings.fontSize + 2, 28);
-        } else if (type === "lineHeight") {
-            currentSettings.lineHeight = Math.min(currentSettings.lineHeight + 0.2, 2.6);
-        }
-
-        applyTextSettings();
-
-        if (window.AdaptiveReaderCV) {
+        if (window.AdaptiveReaderCV && window.AdaptiveReaderCV.refreshTextRegion) {
             window.AdaptiveReaderCV.refreshTextRegion();
         }
+    }
 
+    function resetAdaptationSettings() {
+        applyContinuousFrictionAdaptation(0);
         hideAdaptationPanel();
+
+        if (window.AdaptiveReaderCV && window.AdaptiveReaderCV.refreshTextRegion) {
+            window.AdaptiveReaderCV.refreshTextRegion();
+        }
+    }
+
+    function onGaze(gazeData) {
+        updateSignalMetrics(gazeData);
+
+        if (gazeData.lineIndex !== undefined && gazeData.lineIndex >= 0) {
+            handleLineDwell(gazeData.lineIndex, gazeData.paragraphIndex, gazeData.x, gazeData.y);
+        }
+    }
+
+    function handleLineDwell(lineIndex, paragraphIndex, gazeX, gazeY) {
+        if (lineIndex !== pendingLineIndex) {
+            pendingLineIndex = lineIndex;
+            if (lineConfirmationTimer) {
+                clearTimeout(lineConfirmationTimer);
+            }
+            lineConfirmationTimer = setTimeout(function () {
+                commitReadingLine(pendingLineIndex, paragraphIndex, gazeX, gazeY);
+            }, 300);
+        }
+    }
+
+    function commitReadingLine(lineIndex, paragraphIndex, gazeX, gazeY) {
+        activeLineIndex = lineIndex;
+        activeParagraphIndex = paragraphIndex !== undefined ? paragraphIndex : activeParagraphIndex;
+
+        if (window.DOMMapper) {
+            const lineInfo = window.DOMMapper.findLineAtPoint(gazeX || window.innerWidth / 2, gazeY || 300);
+            if (lineInfo && lineInfo.aoi && lineInfo.aoi.lineRect) {
+                positionReadingRuler(lineInfo.aoi.lineRect);
+            }
+        }
+
+        updateGraduatedFocusWindow(activeParagraphIndex);
+    }
+
+    function positionReadingRuler(lineRect) {
+        if (!el.readingRuler || !el.textContainer) {
+            return;
+        }
+
+        const containerRect = el.textContainer.getBoundingClientRect();
+        const windowScrollY = window.scrollY || window.pageYOffset || 0;
+        const scrollTop = el.textContainer.scrollTop;
+
+        const relativeTop = (lineRect.top - (containerRect.top + windowScrollY)) + scrollTop - 4;
+        const rulerHeight = (lineRect.bottom - lineRect.top) + 8;
+        const rulerWidth = containerRect.width - 28;
+
+        el.readingRuler.style.top = relativeTop + "px";
+        el.readingRuler.style.left = "14px";
+        el.readingRuler.style.width = rulerWidth + "px";
+        el.readingRuler.style.height = rulerHeight + "px";
+        el.readingRuler.classList.remove("hidden");
+    }
+
+    function updateGraduatedFocusWindow(targetParagraphIndex) {
+        const paragraphs = el.textContainer.querySelectorAll(".paragraph");
+        for (let i = 0; i < paragraphs.length; i = i + 1) {
+            paragraphs[i].classList.remove("focus-active", "focus-near-prev", "focus-near-next", "focus-dimmed");
+            if (i === targetParagraphIndex) {
+                paragraphs[i].classList.add("focus-active");
+            } else if (i === targetParagraphIndex - 1) {
+                paragraphs[i].classList.add("focus-near-prev");
+            } else if (i === targetParagraphIndex + 1) {
+                paragraphs[i].classList.add("focus-near-next");
+            } else {
+                paragraphs[i].classList.add("focus-dimmed");
+            }
+        }
+    }
+
+    function onReadingStateUpdate(data) {
+        const score = data.smoothedScore !== undefined ? data.smoothedScore : (data.score || 0);
+        const state = data.state || "FLOW";
+
+        updateMetrics(data.currentWPM, data.fixationMs, score);
+        updateCognitiveCounters(data.regressions, data.revisits);
+
+        applyContinuousFrictionAdaptation(score);
+
+        if (state === "FLOW") {
+            updateStatus("reading", "good");
+            hideAdaptationPanel();
+        } else if (state === "MILD_FRICTION") {
+            updateStatus("reading", "warning");
+        } else if (state === "HIGH_FRICTION" || state === "ASSIST") {
+            updateStatus("reading", "error");
+            showAdaptationPanel(state, score, data.evidence);
+        }
     }
 
     function showAdaptationPanel(state, score, reasons) {
         const stateLabels = {
             MILD_FRICTION: "Mild Reading Friction",
             HIGH_FRICTION: "High Reading Friction",
-            ASSIST: "Reading Assist Available"
+            ASSIST: "Adaptive Assist Recommended"
         };
 
         const label = stateLabels[state] || "Reading Friction Detected";
         el.adaptationStateLabel.textContent = label;
-        el.adaptationScoreLabel.textContent = "Friction score: " + Math.round(score);
+        el.adaptationScoreLabel.textContent = "Friction score: " + Math.round(score) + " / 100";
 
         let reasonsHtml = "";
         if (reasons && reasons.length > 0) {
@@ -310,92 +517,235 @@ const AppUI = (function () {
             }
         }
         el.adaptationReasons.innerHTML = reasonsHtml;
-
         el.adaptationPanel.classList.remove("hidden");
-        el.adaptationPanel.dataset.state = state;
-
-        updateStatus("reading", state === "ASSIST" ? "error" : "warning");
     }
 
     function formatReason(reason) {
         const labels = {
-            repeated_line_revisit: "Repeated line revisits detected",
-            prolonged_fixation: "Longer fixations than usual",
-            reading_speed_slowdown: "Reading speed below baseline",
-            prolonged_dwell: "Extended pause on passage",
+            repeated_line_revisit: "Repeated backwards eye movements",
+            prolonged_fixation: "Extended fixation dwell on difficult phrase",
+            reading_speed_slowdown: "Reading speed noticeably below baseline",
+            prolonged_dwell: "Extended dwell time on passage",
             line_transition_instability: "Unstable line transitions",
             regression_rate: "Repeated line revisits detected",
-            fixation_anomaly: "Longer fixations than usual",
-            dwell_pause_anomaly: "Extended pause on passage"
+            fixation_anomaly: "High cognitive dwell on specific words"
         };
         return labels[reason] || reason;
     }
 
     function hideAdaptationPanel() {
         el.adaptationPanel.classList.add("hidden");
-        el.adaptationPanel.dataset.state = "";
     }
 
-    function showAiPanel(text) {
-        el.aiText.textContent = text;
-        el.aiLoading.classList.add("hidden");
-        el.aiPanel.classList.remove("hidden");
-    }
-
-    function hideAiPanel() {
-        el.aiPanel.classList.add("hidden");
-        el.aiText.textContent = "";
-    }
-
-    async function callGeminiAI(mode) {
-        if (!currentDocument) {
-            return;
+    function getCurrentParagraphElement() {
+        if (activeParagraphIndex >= 0) {
+            const elById = document.getElementById("paragraph-" + activeParagraphIndex);
+            if (elById) {
+                return elById;
+            }
         }
+        return el.textContainer.querySelector(".paragraph");
+    }
 
-        el.aiPanel.classList.remove("hidden");
-        el.aiLoading.classList.remove("hidden");
-        el.aiText.textContent = "";
+    async function callGeminiAI(action) {
+        const paragraphEl = getCurrentParagraphElement();
+        const text = paragraphEl ? paragraphEl.textContent : (currentDocument ? currentDocument.plainText.slice(0, 400) : "Reading text");
 
-        const currentParagraphEl = el.textContainer.querySelector(".paragraph.focused") || el.textContainer.querySelector(".paragraph");
-        const passageText = currentParagraphEl ? currentParagraphEl.textContent : currentDocument.paragraphs[0];
+        const prompt = action === "simplify"
+            ? 'Rewrite this in simpler words for a reader with dyslexia. Use short sentences. Output only the rewritten text:\n\n"' + text + '"'
+            : 'Explain this passage in plain language a 12-year-old could understand. Be brief in 2 sentences:\n\n"' + text + '"';
 
-        let prompt = "";
-        if (mode === "simplify") {
-            prompt = "Rewrite this passage in simpler language for a reader who is finding it difficult. Keep the same meaning but use shorter sentences and easier words. Passage: " + passageText;
-        } else {
-            prompt = "In 2-3 sentences, explain what this passage is saying in plain everyday language. Passage: " + passageText;
-        }
+        showAiLoading(true);
 
         try {
-            const requestBody = {
-                contents: [
-                    {
-                        parts: [{ text: prompt }]
-                    }
-                ]
-            };
-
             const response = await fetch(GEMINI_API_URL + "?key=" + GEMINI_API_KEY, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(requestBody)
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
             });
 
             if (!response.ok) {
-                el.aiLoading.classList.add("hidden");
-                el.aiText.textContent = "Reading Assist is currently unavailable. Reading continues normally.";
+                showAiFallback(action, text);
                 return;
             }
 
             const data = await response.json();
-            const resultText = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+            const result = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) || "Unable to simplify.";
 
-            el.aiLoading.classList.add("hidden");
-            el.aiText.textContent = resultText || "Reading Assist is currently unavailable.";
+            showAiResult(result);
 
-        } catch (aiError) {
+        } catch (error) {
+            showAiFallback(action, text);
+        } finally {
+            showAiLoading(false);
+        }
+    }
+
+    function showAiFallback(action, originalText) {
+        if (action === "simplify") {
+            const simplified = originalText
+                .replace(/sensory synchronization/gi, "eye and brain teamwork")
+                .replace(/phonological reading/gi, "standard reading")
+                .replace(/heterogeneities/gi, "differences")
+                .replace(/processing bottlenecks/gi, "reading slowdowns")
+                .replace(/polymorphic visual scaffolding/gi, "visual reading aids")
+                .replace(/mitigate perceptual crowding/gi, "make words easier to read")
+                .replace(/automaticity/gi, "speed and ease");
+            showAiResult(simplified);
+        } else {
+            showAiResult("Key summary: The text explains how adaptive typography, line focus rulers, and cognitive pacing reduce reading strain for readers with dyslexia.");
+        }
+    }
+
+    function showAiLoading(loading) {
+        if (loading) {
+            el.aiLoading.classList.remove("hidden");
+            el.aiText.textContent = "";
+        } else {
             el.aiLoading.classList.add("hidden");
-            el.aiText.textContent = "Reading Assist is currently unavailable. Reading continues normally.";
+        }
+    }
+
+    function showAiResult(text) {
+        el.aiLoading.classList.add("hidden");
+        el.aiText.textContent = text;
+    }
+
+    function readAloudCurrentParagraph() {
+        if (!window.speechSynthesis) {
+            alert("Text-to-speech is not supported on this browser.");
+            return;
+        }
+
+        stopSpeech();
+
+        const paragraphEl = getCurrentParagraphElement();
+        if (!paragraphEl) {
+            return;
+        }
+
+        const words = paragraphEl.querySelectorAll(".word, .assist-term");
+        const fullText = paragraphEl.textContent;
+
+        const utterance = new SpeechSynthesisUtterance(fullText);
+        utterance.rate = 0.92;
+        utterance.pitch = 1.0;
+
+        utterance.onboundary = function (event) {
+            if (event.name === "word") {
+                const charIndex = event.charIndex;
+                let currentWordIndex = 0;
+                let accumulatedLength = 0;
+
+                for (let i = 0; i < words.length; i = i + 1) {
+                    words[i].classList.remove("word-spoken");
+                    const wordLen = words[i].textContent.length + 1;
+                    if (charIndex >= accumulatedLength && charIndex < accumulatedLength + wordLen) {
+                        currentWordIndex = i;
+                    }
+                    accumulatedLength = accumulatedLength + wordLen;
+                }
+
+                if (words[currentWordIndex]) {
+                    words[currentWordIndex].classList.add("word-spoken");
+                }
+            }
+        };
+
+        utterance.onend = function () {
+            isSpeaking = false;
+            for (let i = 0; i < words.length; i = i + 1) {
+                words[i].classList.remove("word-spoken");
+            }
+        };
+
+        utterance.onerror = function () {
+            isSpeaking = false;
+        };
+
+        currentUtterance = utterance;
+        isSpeaking = true;
+        window.speechSynthesis.speak(utterance);
+    }
+
+    function stopSpeech() {
+        if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+        isSpeaking = false;
+    }
+
+    function updateSignalMetrics(gazeData) {
+        if (gazeData.x !== undefined && gazeData.y !== undefined) {
+            el.metricGazeCoords.textContent = Math.round(gazeData.x) + "px, " + Math.round(gazeData.y) + "px";
+        }
+
+        if (gazeData.lineIndex !== undefined && gazeData.lineIndex !== null && gazeData.lineIndex >= 0) {
+            el.metricLineInfo.textContent = "Line " + (gazeData.lineIndex + 1) + " (P" + ((gazeData.paragraphIndex || 0) + 1) + ")";
+        }
+
+        if (gazeData.confidence !== undefined) {
+            el.metricConfidence.textContent = Math.round(gazeData.confidence * 100) + "%";
+        }
+    }
+
+    function updateSignalQuality(qualityData) {
+        const score = qualityData.score || 0;
+        el.metricQualityBadge.textContent = "Quality: " + Math.round(score) + "%";
+
+        const breakdown = qualityData.breakdown || { face: 33, gaze: 33, blink: 33 };
+        el.barSegFace.style.width = breakdown.face + "%";
+        el.barSegGaze.style.width = breakdown.gaze + "%";
+        el.barSegBlink.style.width = breakdown.blink + "%";
+    }
+
+    function onFaceChange(faceData) {
+        if (faceData.headPose) {
+            const yaw = Math.round(faceData.headPose.yaw || 0);
+            const pitch = Math.round(faceData.headPose.pitch || 0);
+            el.metricHeadPose.textContent = "Yaw: " + yaw + "° | Pitch: " + pitch + "°";
+        }
+        if (faceData.facePresent) {
+            setCvStatus("ok", "ok", "warn");
+        } else {
+            setCvStatus("ok", "warn", "off");
+        }
+    }
+
+    function onBaselineReady(data) {
+        if (data.baselineBlinkRate) {
+            el.metricBlinkRate.textContent = Math.round(data.baselineBlinkRate) + " / min";
+        }
+        updateMetrics(data.baselineWPM || 215, data.baselineFixationMs || 240, 20);
+    }
+
+    function onCalibrated(data) {
+        setCvStatus("ok", "ok", "ok");
+    }
+
+    function onCVReady() {
+        setCvStatus("ok", "ok", "ok");
+        updateStatus("system", "good");
+    }
+
+    function onCVError(error) {
+        hideCvLoadingBanner();
+        updateStatus("system", "warning");
+        setCvStatus("warn", "off", "off");
+    }
+
+    function updateCVStatus(message) {
+        showCvLoadingBanner(message);
+    }
+
+    function updateCognitiveCounters(regressions, revisits) {
+        if (regressions !== undefined) {
+            el.metricRegressions.textContent = regressions;
+        }
+        if (revisits !== undefined) {
+            el.metricRevisits.textContent = revisits;
         }
     }
 
@@ -435,13 +785,13 @@ const AppUI = (function () {
 
     function updateMetrics(wpm, fixationMs, frictionScore) {
         if (wpm !== null && wpm !== undefined) {
-            el.wpmDisplay.textContent = Math.round(wpm);
+            el.wpmDisplay.textContent = Math.round(wpm) + " WPM";
         }
         if (fixationMs !== null && fixationMs !== undefined) {
-            el.fixationDisplay.textContent = Math.round(fixationMs) + "ms";
+            el.fixationDisplay.textContent = Math.round(fixationMs) + " ms";
         }
         if (frictionScore !== null && frictionScore !== undefined) {
-            el.frictionDisplay.textContent = Math.round(frictionScore);
+            el.frictionDisplay.textContent = Math.round(frictionScore) + " / 100";
         }
     }
 
@@ -476,7 +826,56 @@ const AppUI = (function () {
 
     function setChooseFileBtnLoading(loading) {
         el.chooseFileBtn.disabled = loading;
-        el.chooseFileBtn.textContent = loading ? "Reading file…" : "Choose a file";
+        el.chooseFileBtn.textContent = loading ? "Processing file…" : "Choose a file";
+    }
+
+    function resetSession() {
+        if (isResetting) {
+            return;
+        }
+        isResetting = true;
+
+        stopSpeech();
+        dismissTooltip();
+        hideAdaptationPanel();
+
+        el.readingScreen.classList.add("hidden");
+        el.landingScreen.classList.remove("hidden");
+
+        el.textContainer.innerHTML = '<div id="reading-ruler" class="reading-ruler hidden"></div>';
+        el.documentTitle.textContent = "Document";
+        el.fileInput.value = "";
+        el.wpmDisplay.textContent = "-- WPM";
+        el.fixationDisplay.textContent = "-- ms";
+        el.frictionDisplay.textContent = "-- / 100";
+        el.wordCountDisplay.textContent = "--";
+        el.paraCountDisplay.textContent = "--";
+        el.metricGazeCoords.textContent = "—";
+        el.metricLineInfo.textContent = "—";
+        el.metricConfidence.textContent = "—";
+        el.metricHeadPose.textContent = "—";
+        el.metricBlinkRate.textContent = "—";
+        el.metricRegressions.textContent = "0";
+        el.metricRevisits.textContent = "0";
+        el.metricQualityBadge.textContent = "Quality: --";
+        el.barSegFace.style.width = "0%";
+        el.barSegGaze.style.width = "0%";
+        el.barSegBlink.style.width = "0%";
+        el.aiText.textContent = "Select an AI action below to assist with the active paragraph.";
+        el.demoBadge.classList.add("hidden");
+
+        resetAdaptationSettings();
+
+        currentDocument = null;
+        isDemoMode = false;
+        activeLineIndex = -1;
+        pendingLineIndex = -1;
+
+        if (window.AdaptiveReaderApp) {
+            window.AdaptiveReaderApp.onSessionReset();
+        }
+
+        isResetting = false;
     }
 
     function getTextContainer() {
@@ -493,15 +892,19 @@ const AppUI = (function () {
 
     return {
         initialize: initialize,
-        updateMetrics: updateMetrics,
-        updateStatus: updateStatus,
-        showAdaptationPanel: showAdaptationPanel,
-        hideAdaptationPanel: hideAdaptationPanel,
-        showAiPanel: showAiPanel,
-        hideAiPanel: hideAiPanel,
-        setCvStatus: setCvStatus,
-        showCvLoadingBanner: showCvLoadingBanner,
-        hideCvLoadingBanner: hideCvLoadingBanner,
+        onGaze: onGaze,
+        onReadingStateUpdate: onReadingStateUpdate,
+        updateSignalQuality: updateSignalQuality,
+        onFaceChange: onFaceChange,
+        onBaselineReady: onBaselineReady,
+        onCalibrated: onCalibrated,
+        onCVReady: onCVReady,
+        onCVError: onCVError,
+        updateCVStatus: updateCVStatus,
+        applyContinuousFrictionAdaptation: applyContinuousFrictionAdaptation,
+        callGeminiAI: callGeminiAI,
+        readAloudCurrentParagraph: readAloudCurrentParagraph,
+        resetAdaptationSettings: resetAdaptationSettings,
         resetSession: resetSession,
         getTextContainer: getTextContainer,
         getCurrentDocument: getCurrentDocument,

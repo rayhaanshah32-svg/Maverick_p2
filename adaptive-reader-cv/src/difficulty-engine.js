@@ -403,3 +403,7 @@ const DifficultyEngine = (function () {
     };
 
 })();
+
+if (typeof window !== "undefined") {
+    window.DifficultyEngine = DifficultyEngine;
+}

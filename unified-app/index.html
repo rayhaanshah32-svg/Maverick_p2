@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adaptive Reader</title>
-    <meta name="description" content="Adaptive Reader — real-time reading support powered by eye tracking and reading intelligence.">
+    <title>The Adaptive Reader — Real-Time Eye-Tracking Reading Companion</title>
+    <meta name="description" content="The Adaptive Reader — AI companion for people with dyslexia that uses webcam eye-tracking to adapt reading experience in real time.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -30,7 +30,7 @@
                     </svg>
                 </div>
                 <h1>Open a passage to begin</h1>
-                <p>Adaptive Reader watches your reading flow and steps in when a passage turns rough.</p>
+                <p>The Adaptive Reader monitors your natural eye movements and subtly adapts typography and cognitive support when reading gets rough.</p>
 
                 <input type="file" id="file-input" accept=".txt,.md,.pdf,.docx,.pptx,.png,.jpg,.jpeg" style="display: none;">
 
@@ -47,11 +47,11 @@
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" stroke-width="2">
                             <polygon points="5 3 19 12 5 21 5 3"></polygon>
                         </svg>
-                        Start Demo
+                        Start Live Demo
                     </button>
                 </div>
 
-                <p class="hint">…or drag and drop a file onto this card.</p>
+                <p class="hint">Supports PDF, Word DOCX, TXT, Markdown, PowerPoint, and Images</p>
                 <div id="error-message" class="error-message"></div>
             </div>
         </div>
@@ -66,14 +66,14 @@
 
                         <div class="reading-header">
                             <div class="reading-header-left">
-                                <button id="back-btn" class="icon-btn" title="Back to upload">
+                                <button id="back-btn" class="icon-btn" title="Back to document upload">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <line x1="19" y1="12" x2="5" y2="12"></line>
                                         <polyline points="12 19 5 12 12 5"></polyline>
                                     </svg>
                                 </button>
                                 <h2 id="document-title">Document</h2>
-                                <span id="demo-badge" class="demo-badge hidden">DEMO — Simulated</span>
+                                <span id="demo-badge" class="demo-badge hidden">LIVE DEMO</span>
                             </div>
                             <div class="reading-header-right">
                                 <div id="cv-status-row" class="cv-status-row">
@@ -90,18 +90,19 @@
                                         <span>Gaze</span>
                                     </div>
                                 </div>
-                                <button id="calibrate-btn" class="action-pill-btn" title="Calibrate eye tracking">
-                                    ⚡ Calibrate
+                                <button id="calibrate-btn" class="action-pill-btn" title="Recalibrate gaze tracking">
+                                    ⚡ Recalibrate [R]
                                 </button>
                             </div>
                         </div>
 
                         <div id="cv-loading-banner" class="cv-loading-banner hidden">
                             <div class="cv-loading-spinner"></div>
-                            <span id="cv-loading-text">Initializing eye tracking…</span>
+                            <span id="cv-loading-text">Initializing eye tracking pipeline…</span>
                         </div>
 
                         <div id="text-container" class="text-container">
+                            <div id="reading-ruler" class="reading-ruler hidden"></div>
                         </div>
 
                         <div class="reading-footer">
@@ -112,27 +113,48 @@
                                 </div>
                                 <div class="status-item">
                                     <div class="status-dot" id="reading-status"></div>
-                                    <span>Reading</span>
+                                    <span>Cognitive State</span>
                                 </div>
                             </div>
                             <div class="reading-metrics">
                                 <div class="metric">
-                                    <span class="metric-label">WPM</span>
-                                    <span class="metric-value" id="wpm-display">--</span>
+                                    <span class="metric-label">Reading Speed</span>
+                                    <span class="metric-value" id="wpm-display">-- WPM</span>
                                 </div>
                                 <div class="metric">
-                                    <span class="metric-label">Fixation</span>
-                                    <span class="metric-value" id="fixation-display">--</span>
+                                    <span class="metric-label">Fixation Dwell</span>
+                                    <span class="metric-value" id="fixation-display">-- ms</span>
                                 </div>
                                 <div class="metric">
-                                    <span class="metric-label">Reading Friction</span>
-                                    <span class="metric-value" id="friction-display">--</span>
+                                    <span class="metric-label">Friction Score</span>
+                                    <span class="metric-value" id="friction-display">-- / 100</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <div class="side-panel">
+
+                        <div id="demo-controls-bar" class="glass-card demo-controls-card">
+                            <div class="glass-highlight"></div>
+                            <div class="sidebar-card-title">
+                                <span>Demo Simulation Controls</span>
+                            </div>
+                            <div class="demo-buttons-grid">
+                                <button id="demo-simulate-friction-btn" class="demo-action-btn" title="Trigger reading struggle">
+                                    ⚡ Trigger Friction
+                                </button>
+                                <button id="demo-show-ai-btn" class="demo-action-btn" title="Open AI assist">
+                                    ✦ Open AI Assist
+                                </button>
+                                <button id="demo-reset-adaptation-btn" class="demo-action-btn" title="Reset typography">
+                                    ↺ Reset Flow
+                                </button>
+                                <button id="demo-tts-btn" class="demo-action-btn" title="Text to speech">
+                                    🔊 Read Aloud
+                                </button>
+                            </div>
+                        </div>
 
                         <div id="adaptation-panel" class="glass-card adaptation-card hidden">
                             <div class="glass-highlight"></div>
@@ -157,48 +179,86 @@
                             </div>
                             <div id="adaptation-reasons" class="adaptation-reasons"></div>
                             <div class="adaptation-actions">
-                                <button id="adapt-spacing-btn" class="action-btn">Increase Spacing</button>
-                                <button id="adapt-font-btn" class="action-btn">Larger Font</button>
-                                <button id="adapt-line-height-btn" class="action-btn">More Line Height</button>
+                                <button id="adapt-spacing-btn" class="action-btn"><span>Increase Letter Spacing</span> <span>+</span></button>
+                                <button id="adapt-font-btn" class="action-btn"><span>Enlarge Font Size</span> <span>+</span></button>
+                                <button id="adapt-line-height-btn" class="action-btn"><span>Expand Line Spacing</span> <span>+</span></button>
+                                <button id="adapt-ai-btn" class="action-btn"><span>AI Passage Simplification</span> <span>✦</span></button>
                             </div>
                         </div>
 
-                        <div id="ai-panel" class="glass-card ai-card hidden">
+                        <div id="ai-panel" class="glass-card ai-card">
                             <div class="glass-highlight"></div>
                             <div class="ai-header">
                                 <span class="ai-icon">✦</span>
-                                <h4>Reading Assist</h4>
-                                <button id="dismiss-ai" class="icon-btn">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                                    </svg>
-                                </button>
+                                <h4>AI Reading Companion</h4>
                             </div>
                             <div id="ai-content" class="ai-content">
-                                <p id="ai-text" class="ai-text"></p>
                                 <div id="ai-loading" class="ai-loading hidden">
                                     <div class="ai-loading-dots"><span></span><span></span><span></span></div>
                                     <span>Generating explanation…</span>
                                 </div>
+                                <p id="ai-text" class="ai-text">Select an AI action below to assist with the active paragraph.</p>
                             </div>
                             <div class="ai-actions">
-                                <button id="ai-simplify-btn" class="ai-action-btn" title="Simplify this passage">Simplify</button>
-                                <button id="ai-explain-btn" class="ai-action-btn" title="Explain what you just read">Explain</button>
+                                <button id="ai-simplify-btn" class="ai-action-btn" title="Rewrite in simpler words">✦ Simplify</button>
+                                <button id="ai-explain-btn" class="ai-action-btn" title="Explain in plain language">💡 Explain</button>
+                                <button id="ai-tts-btn" class="ai-action-btn" title="Listen with word highlighting">🔊 Read Aloud</button>
                             </div>
                         </div>
 
-                        <div class="glass-card session-card">
+                        <div class="glass-card sidebar-metric-card">
                             <div class="glass-highlight"></div>
-                            <div class="session-info">
-                                <div class="session-stat">
-                                    <span class="session-label">Words</span>
-                                    <span class="session-value" id="word-count-display">--</span>
-                                </div>
-                                <div class="session-stat">
-                                    <span class="session-label">Paragraphs</span>
-                                    <span class="session-value" id="para-count-display">--</span>
-                                </div>
+                            <div class="sidebar-card-title">
+                                <span>Eye Tracking & Signal Quality</span>
+                                <span id="metric-quality-badge" style="font-size: 11px; font-weight: 500; color: var(--navy);">Quality: --</span>
+                            </div>
+                            <div class="quality-progress-bar">
+                                <div class="quality-segment quality-seg-face" id="bar-seg-face" style="width: 0%;"></div>
+                                <div class="quality-segment quality-seg-gaze" id="bar-seg-gaze" style="width: 0%;"></div>
+                                <div class="quality-segment quality-seg-blink" id="bar-seg-blink" style="width: 0%;"></div>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-lbl">Smoothed Gaze</span>
+                                <span class="metric-val" id="metric-gaze-coords">—</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-lbl">Target Reading Line</span>
+                                <span class="metric-val" id="metric-line-info">—</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-lbl">Signal Confidence</span>
+                                <span class="metric-val" id="metric-confidence">—</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-lbl">Head Pose (Yaw/Pitch)</span>
+                                <span class="metric-val" id="metric-head-pose">—</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-lbl">Blink Rate</span>
+                                <span class="metric-val" id="metric-blink-rate">—</span>
+                            </div>
+                        </div>
+
+                        <div class="glass-card sidebar-metric-card">
+                            <div class="glass-highlight"></div>
+                            <div class="sidebar-card-title">
+                                <span>Document & Saccade Metrics</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-lbl">Total Words</span>
+                                <span class="metric-val" id="word-count-display">--</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-lbl">Paragraphs</span>
+                                <span class="metric-val" id="para-count-display">--</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-lbl">Regressions Count</span>
+                                <span class="metric-val" id="metric-regressions">0</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-lbl">Line Revisit Rate</span>
+                                <span class="metric-val" id="metric-revisits">0</span>
                             </div>
                         </div>
 
@@ -215,23 +275,17 @@
         window.mediapipeReadyResolve = null;
         window.mediapipeReadyPromise = new Promise(function (resolve) {
             window.mediapipeReadyResolve = resolve;
-            setTimeout(resolve, 2500);
+            setTimeout(resolve, 3000);
         });
     </script>
 
     <script type="module">
         try {
-            const visionModule = await import("../adaptive-reader-cv/mediapipe/tasks-vision-wasm/vision_bundle.js");
+            const visionModule = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js");
             window.FaceLandmarker = visionModule.FaceLandmarker;
             window.FilesetResolver = visionModule.FilesetResolver;
         } catch (error) {
-            try {
-                const cdnModule = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.js");
-                window.FaceLandmarker = cdnModule.FaceLandmarker;
-                window.FilesetResolver = cdnModule.FilesetResolver;
-            } catch (cdnError) {
-                console.error("Unable to load MediaPipe bundle:", cdnError);
-            }
+            console.error("Unable to load MediaPipe bundle from CDN:", error);
         }
         if (typeof window.mediapipeReadyResolve === "function") {
             window.mediapipeReadyResolve();
@@ -246,10 +300,10 @@
     <script src="../adaptive-reader-cv/src/dom-mapper.js"></script>
     <script src="../adaptive-reader-cv/src/calibration-ui.js"></script>
     <script src="../adaptive-reader-cv/src/baseline-capture.js"></script>
+    <script src="../adaptive-reader-cv/src/main.js"></script>
     <script src="../adaptive-reader-cv/src/reading-state-engine.js"></script>
     <script src="../adaptive-reader-cv/src/difficulty-engine.js"></script>
     <script src="../adaptive-reader-cv/src/adaptation-contract.js"></script>
-    <script src="../adaptive-reader-cv/src/main.js"></script>
     <script src="app-ui.js"></script>
     <script src="main.js"></script>
 

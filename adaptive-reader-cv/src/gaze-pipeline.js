@@ -4,8 +4,8 @@ const GazePipeline = (function () {
     const OUTPUT_RATE_HZ = 20;
     const OUTPUT_INTERVAL_MS = 1000 / OUTPUT_RATE_HZ;
 
-    const RECALIBRATION_DRIFT_THRESHOLD_PX = 130;
-    const RECALIBRATION_CHECK_WINDOW_MS = 5000;
+    const RECALIBRATION_DRIFT_THRESHOLD_PX = 300;
+    const RECALIBRATION_CHECK_WINDOW_MS = 8000;
 
     let rawSampleBuffer = [];
     let latestRawPoint = { x: 0, y: 0 };
@@ -36,12 +36,12 @@ const GazePipeline = (function () {
         let totalY = 0;
         let totalWeight = 0;
 
-        for (let i = 0; i < rawSampleBuffer.length; i++) {
+        for (let i = 0; i < rawSampleBuffer.length; i = i + 1) {
             const sample = rawSampleBuffer[i];
             const weight = sample.confidence > 0 ? sample.confidence : 0.1;
-            totalX += sample.x * weight;
-            totalY += sample.y * weight;
-            totalWeight += weight;
+            totalX = totalX + (sample.x * weight);
+            totalY = totalY + (sample.y * weight);
+            totalWeight = totalWeight + weight;
         }
 
         if (totalWeight === 0) {
@@ -74,7 +74,7 @@ const GazePipeline = (function () {
         let maxDistanceFromFirst = 0;
         const firstSample = driftCheckSamples[0];
 
-        for (let i = 1; i < driftCheckSamples.length; i++) {
+        for (let i = 1; i < driftCheckSamples.length; i = i + 1) {
             const distance = Math.sqrt(
                 Math.pow(driftCheckSamples[i].x - firstSample.x, 2) +
                 Math.pow(driftCheckSamples[i].y - firstSample.y, 2)
@@ -98,57 +98,66 @@ const GazePipeline = (function () {
 
             const lineMapping = DOMMapper.findLineAtPoint(smoothedPoint.x, smoothedPoint.y);
 
-            const avgConfidence =
-                rawSampleBuffer.length > 0
-                    ? rawSampleBuffer.reduce(function (sum, s) { return sum + s.confidence; }, 0) /
-                    rawSampleBuffer.length
-                    : 0;
-
-            const roundedSmoothX = Math.round(smoothedPoint.x);
-            const roundedSmoothY = Math.round(smoothedPoint.y);
-            const roundedRawX = Math.round(latestRawPoint.x);
-            const roundedRawY = Math.round(latestRawPoint.y);
-
-            comparisonLogCounter++;
-            if (comparisonLogCounter % 40 === 0) {
-                const diffX = Math.abs(roundedRawX - roundedSmoothX);
-                const diffY = Math.abs(roundedRawY - roundedSmoothY);
-                console.log(
-                    "[Signal Smoothing] Raw: (" + roundedRawX + ", " + roundedRawY + ") | " +
-                    "Smoothed: (" + roundedSmoothX + ", " + roundedSmoothY + ") | " +
-                    "Delta: (" + diffX + "px, " + diffY + "px)"
-                );
-            }
-
-            DOMMapper.renderDebugOverlay(lineMapping.lineIndex, lineMapping.paragraphIndex);
+            const qualityEvaluation = ConfidenceGate.assessSample(latestRawPoint);
+            const overallConfidence = qualityEvaluation.allowed
+                ? qualityEvaluation.confidence
+                : 0;
 
             EventAPI.emitGazeUpdate({
-                x: roundedSmoothX,
-                y: roundedSmoothY,
-                rawX: roundedRawX,
-                rawY: roundedRawY,
+                x: smoothedPoint.x,
+                y: smoothedPoint.y,
+                rawX: latestRawPoint.x,
+                rawY: latestRawPoint.y,
                 lineIndex: lineMapping.lineIndex,
                 localLineIndex: lineMapping.localLineIndex,
                 paragraphIndex: lineMapping.paragraphIndex,
                 aoi: lineMapping.aoi,
-                confidence: parseFloat(avgConfidence.toFixed(3)),
+                confidence: overallConfidence,
+                timestamp: Date.now()
+            });
+
+            checkForDrift(smoothedPoint);
+
+            comparisonLogCounter = comparisonLogCounter + 1;
+            if (comparisonLogCounter % 40 === 0) {
+                const diffX = Math.round(smoothedPoint.x - latestRawPoint.x);
+                const diffY = Math.round(smoothedPoint.y - latestRawPoint.y);
+            }
+        } else if (lastKnownGoodPoint) {
+            const lineMappingFallback = DOMMapper.findLineAtPoint(
+                lastKnownGoodPoint.x,
+                lastKnownGoodPoint.y
+            );
+
+            EventAPI.emitGazeUpdate({
+                x: lastKnownGoodPoint.x,
+                y: lastKnownGoodPoint.y,
+                rawX: latestRawPoint.x,
+                rawY: latestRawPoint.y,
+                lineIndex: lineMappingFallback.lineIndex,
+                localLineIndex: lineMappingFallback.localLineIndex,
+                paragraphIndex: lineMappingFallback.paragraphIndex,
+                aoi: lineMappingFallback.aoi,
+                confidence: 0.2,
                 timestamp: Date.now()
             });
         }
     }
 
-    function handleIncomingWebGazerPoint(gazeData, webgazerElapsedTime) {
-        if (!gazeData) {
+    function handleIncomingWebGazerPoint(gazeData, elapsedTime) {
+        if (!gazeData || !isRunning) {
             return;
         }
 
-        const gateResult = ConfidenceGate.assessSample(gazeData);
+        const x = gazeData.x;
+        const y = gazeData.y;
+        const timestamp = Date.now();
 
-        if (!gateResult.allowed) {
-            return;
-        }
+        const isReasonable = x >= -100 && x <= window.innerWidth + 100 &&
+                             y >= -100 && y <= window.innerHeight + 100;
 
-        addRawSample(gazeData.x, gazeData.y, gateResult.confidence, Date.now());
+        const confidence = isReasonable ? 0.85 : 0.2;
+        addRawSample(x, y, confidence, timestamp);
     }
 
     function start() {
@@ -156,6 +165,9 @@ const GazePipeline = (function () {
             return;
         }
         isRunning = true;
+        rawSampleBuffer = [];
+        driftCheckSamples = [];
+
         outputTimerId = setInterval(runOutputTick, OUTPUT_INTERVAL_MS);
     }
 
@@ -169,29 +181,30 @@ const GazePipeline = (function () {
         driftCheckSamples = [];
     }
 
-    function resetDriftTracking() {
-        driftCheckSamples = [];
-    }
-
-    function setSmoothingWindowMs(newMs) {
-        if (newMs >= 10 && newMs <= 250) {
-            smoothingWindowMs = newMs;
-            console.log("[GazePipeline] Smoothing window updated to " + newMs + "ms");
-        }
+    function setSmoothingWindowMs(ms) {
+        smoothingWindowMs = Math.max(10, Math.min(200, ms));
     }
 
     function getSmoothingWindowMs() {
         return smoothingWindowMs;
     }
 
+    function resetDriftTracking() {
+        driftCheckSamples = [];
+    }
+
     return {
-        handleIncomingWebGazerPoint: handleIncomingWebGazerPoint,
         start: start,
         stop: stop,
-        resetDriftTracking: resetDriftTracking,
+        handleIncomingWebGazerPoint: handleIncomingWebGazerPoint,
         setSmoothingWindowMs: setSmoothingWindowMs,
         getSmoothingWindowMs: getSmoothingWindowMs,
+        resetDriftTracking: resetDriftTracking,
         OUTPUT_RATE_HZ: OUTPUT_RATE_HZ
     };
 
 })();
+
+if (typeof window !== "undefined") {
+    window.GazePipeline = GazePipeline;
+}

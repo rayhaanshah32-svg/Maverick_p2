@@ -5,14 +5,14 @@ const CameraManager = (function () {
     let isReady = false;
     let onReadyCallbacks = [];
 
-    async function startCamera() {
+    async function startCamera(videoConstraints) {
         if (sharedStream !== null) {
             return sharedStream;
         }
 
         try {
             sharedStream = await navigator.mediaDevices.getUserMedia({
-                video: {
+                video: videoConstraints || {
                     width: { ideal: 640 },
                     height: { ideal: 480 },
                     facingMode: "user"
@@ -21,7 +21,7 @@ const CameraManager = (function () {
             });
         } catch (error) {
             sharedStream = await navigator.mediaDevices.getUserMedia({
-                video: true,
+                video: videoConstraints || true,
                 audio: false
             });
         }

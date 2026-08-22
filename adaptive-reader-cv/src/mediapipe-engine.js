@@ -44,13 +44,13 @@ const MediaPipeEngine = (function () {
         }
 
         const filesetResolver = await FilesetResolver.forVisionTasks(
-            "./mediapipe/tasks-vision-wasm"
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
         );
 
         try {
             faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
                 baseOptions: {
-                    modelAssetPath: "./mediapipe/tasks-vision-wasm/face_landmarker.task",
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
                     delegate: "GPU"
                 },
                 outputFaceBlendshapes: false,
@@ -61,7 +61,7 @@ const MediaPipeEngine = (function () {
         } catch (gpuError) {
             faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
                 baseOptions: {
-                    modelAssetPath: "./mediapipe/tasks-vision-wasm/face_landmarker.task",
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
                     delegate: "CPU"
                 },
                 outputFaceBlendshapes: false,
@@ -77,7 +77,7 @@ const MediaPipeEngine = (function () {
     function computeEyeAspectRatio(landmarks, upperIndices, lowerIndices, horizontalIndices) {
         let verticalSum = 0;
 
-        for (let i = 0; i < upperIndices.length; i++) {
+        for (let i = 0; i < upperIndices.length; i = i + 1) {
             const upper = landmarks[upperIndices[i]];
             const lower = landmarks[lowerIndices[i]];
             const distance = Math.sqrt(
@@ -85,7 +85,7 @@ const MediaPipeEngine = (function () {
                 Math.pow(upper.y - lower.y, 2) +
                 Math.pow(upper.z - lower.z, 2)
             );
-            verticalSum += distance;
+            verticalSum = verticalSum + distance;
         }
 
         const averageVertical = verticalSum / upperIndices.length;
@@ -168,7 +168,7 @@ const MediaPipeEngine = (function () {
                     const averageEAR = (leftEAR + rightEAR) / 2;
 
                     if (averageEAR < EAR_BLINK_THRESHOLD) {
-                        blinkFrameCount++;
+                        blinkFrameCount = blinkFrameCount + 1;
                         if (blinkFrameCount >= EAR_BLINK_FRAMES_NEEDED) {
                             isCurrentlyBlinking = true;
                         }
@@ -249,3 +249,7 @@ const MediaPipeEngine = (function () {
     };
 
 })();
+
+if (typeof window !== "undefined") {
+    window.MediaPipeEngine = MediaPipeEngine;
+}

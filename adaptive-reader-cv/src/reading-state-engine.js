@@ -648,16 +648,32 @@ const ReadingStateEngine = (function () {
         lineWordCounts = perLineWordCounts || [];
     }
 
-    function initialize() {
+    function initialize(options) {
         if (isInitialized) {
             return;
         }
         isInitialized = true;
-        AdaptiveReaderCV.on("onGazeUpdate", handleGazeUpdate);
-        AdaptiveReaderCV.on("onSignalQualityUpdate", handleSignalQualityUpdate);
-        AdaptiveReaderCV.on("onFaceQualityChange", handleFaceQualityChange);
-        AdaptiveReaderCV.on("onBaselineComplete", handleBaselineComplete);
-        console.log("[ReadingStateEngine] Initialized and subscribed to CV events.");
+
+        var api = (window.EventAPI) ? window.EventAPI : (window.AdaptiveReaderCV || null);
+
+        if (api) {
+            api.on("onGazeUpdate", handleGazeUpdate);
+            api.on("onSignalQualityUpdate", handleSignalQualityUpdate);
+            api.on("onFaceQualityChange", handleFaceQualityChange);
+            api.on("onBaselineComplete", handleBaselineComplete);
+        }
+
+        if (options && options.documentWordCount) {
+            documentTotalWords = options.documentWordCount;
+        }
+        if (options && options.documentLineCount) {
+            documentTotalLines = options.documentLineCount;
+        }
+
+        lastFacePresent = true;
+        currentSignalQuality = MIN_QUALITY_SCORE;
+
+        console.log("[ReadingStateEngine] Initialized.");
     }
 
     function start() {
@@ -724,3 +740,8 @@ const ReadingStateEngine = (function () {
     };
 
 })();
+
+if (typeof window !== "undefined") {
+    window.ReadingStateEngine = ReadingStateEngine;
+    window.ReadingIntelligence = ReadingStateEngine;
+}

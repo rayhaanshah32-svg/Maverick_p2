@@ -8,15 +8,25 @@ const DOMMapper = (function () {
     let debugOverlayCanvas = null;
     let resizeObserver = null;
     let mutationObserver = null;
+    let refreshDebounceTimer = null;
 
     const VERTICAL_TOLERANCE_PX = 14;
     const HORIZONTAL_EXPANSION_PX = 35;
+
+    function debouncedRebuild() {
+        if (refreshDebounceTimer) {
+            clearTimeout(refreshDebounceTimer);
+        }
+        refreshDebounceTimer = setTimeout(function () {
+            rebuildBoundingBoxCache();
+        }, 50);
+    }
 
     function setTextContainer(selector) {
         textContainerSelector = selector;
         containerElement = document.querySelector(selector);
         setupObservers();
-        rebuildBoundingBoxCache();
+        debouncedRebuild();
     }
 
     function setupObservers() {
@@ -31,14 +41,14 @@ const DOMMapper = (function () {
 
         if (containerElement && window.ResizeObserver) {
             resizeObserver = new ResizeObserver(function () {
-                rebuildBoundingBoxCache();
+                debouncedRebuild();
             });
             resizeObserver.observe(containerElement);
         }
 
         if (containerElement && window.MutationObserver) {
             mutationObserver = new MutationObserver(function () {
-                rebuildBoundingBoxCache();
+                debouncedRebuild();
             });
             mutationObserver.observe(containerElement, {
                 childList: true,
@@ -57,7 +67,7 @@ const DOMMapper = (function () {
             if (node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0) {
                 textNodes.push(node);
             } else {
-                for (let i = 0; i < node.childNodes.length; i++) {
+                for (let i = 0; i < node.childNodes.length; i = i + 1) {
                     collectTextNodes(node.childNodes[i]);
                 }
             }
@@ -66,139 +76,167 @@ const DOMMapper = (function () {
         collectTextNodes(paragraphElement);
 
         if (textNodes.length === 0) {
-            return { lines: lines, nextGlobalIndex: startGlobalLineIndex };
+            return lines;
         }
 
-        const range = document.createRange();
-        let currentGlobalIndex = startGlobalLineIndex;
-        let localIndex = 0;
+        let currentLineY = null;
+        let currentLineBoxes = [];
+        let localLineIndex = 0;
 
-        for (let i = 0; i < textNodes.length; i++) {
-            const textNode = textNodes[i];
-            const textLength = textNode.textContent.length;
-            let charIndex = 0;
+        for (let t = 0; t < textNodes.length; t = t + 1) {
+            const textNode = textNodes[t];
+            const range = document.createRange();
 
-            while (charIndex < textLength) {
-                while (charIndex < textLength && /\s/.test(textNode.textContent[charIndex])) {
-                    charIndex++;
-                }
-                if (charIndex >= textLength) {
-                    break;
-                }
+            for (let c = 0; c < textNode.textContent.length; c = c + 1) {
+                range.setStart(textNode, c);
+                range.setEnd(textNode, c + 1);
 
-                let wordEnd = charIndex;
-                while (wordEnd < textLength && !/\s/.test(textNode.textContent[wordEnd])) {
-                    wordEnd++;
+                const charRects = range.getClientRects();
+                if (charRects.length === 0) {
+                    continue;
                 }
 
-                range.setStart(textNode, charIndex);
-                range.setEnd(textNode, wordEnd);
+                const rect = charRects[0];
+                if (rect.width === 0 && rect.height === 0) {
+                    continue;
+                }
 
-                const rects = range.getClientRects();
-                if (rects.length > 0) {
-                    const rect = rects[0];
-                    const pageTop = rect.top + window.scrollY;
-                    const pageBottom = rect.bottom + window.scrollY;
+                const charCenterY = rect.top + rect.height / 2;
 
-                    let addedToExistingLine = false;
-                    for (let l = 0; l < lines.length; l++) {
-                        const existing = lines[l];
-                        const verticalOverlap = Math.min(pageBottom, existing.bottomRaw) - Math.max(pageTop, existing.topRaw);
-                        if (verticalOverlap > (rect.height * 0.4)) {
-                            existing.left = Math.min(existing.left, rect.left - HORIZONTAL_EXPANSION_PX);
-                            existing.right = Math.max(existing.right, rect.right + HORIZONTAL_EXPANSION_PX);
-                            existing.topRaw = Math.min(existing.topRaw, pageTop);
-                            existing.bottomRaw = Math.max(existing.bottomRaw, pageBottom);
-                            existing.top = existing.topRaw - VERTICAL_TOLERANCE_PX;
-                            existing.bottom = existing.bottomRaw + VERTICAL_TOLERANCE_PX;
-                            addedToExistingLine = true;
-                            break;
-                        }
+                if (currentLineY === null) {
+                    currentLineY = charCenterY;
+                    currentLineBoxes.push(rect);
+                } else if (Math.abs(charCenterY - currentLineY) > 9) {
+                    if (currentLineBoxes.length > 0) {
+                        lines.push(
+                            buildLineBox(
+                                currentLineBoxes,
+                                paragraphIndex,
+                                localLineIndex,
+                                startGlobalLineIndex + localLineIndex
+                            )
+                        );
+                        localLineIndex = localLineIndex + 1;
                     }
-
-                    if (!addedToExistingLine) {
-                        lines.push({
-                            lineIndex: currentGlobalIndex,
-                            localLineIndex: localIndex,
-                            paragraphIndex: paragraphIndex,
-                            left: rect.left - HORIZONTAL_EXPANSION_PX,
-                            right: rect.right + HORIZONTAL_EXPANSION_PX,
-                            topRaw: pageTop,
-                            bottomRaw: pageBottom,
-                            top: pageTop - VERTICAL_TOLERANCE_PX,
-                            bottom: pageBottom + VERTICAL_TOLERANCE_PX
-                        });
-                        currentGlobalIndex++;
-                        localIndex++;
-                    }
+                    currentLineBoxes = [rect];
+                    currentLineY = charCenterY;
+                } else {
+                    currentLineBoxes.push(rect);
                 }
-
-                charIndex = wordEnd;
             }
+
+            range.detach();
         }
 
-        return { lines: lines, nextGlobalIndex: currentGlobalIndex };
+        if (currentLineBoxes.length > 0) {
+            lines.push(
+                buildLineBox(
+                    currentLineBoxes,
+                    paragraphIndex,
+                    localLineIndex,
+                    startGlobalLineIndex + localLineIndex
+                )
+            );
+        }
+
+        return lines;
+    }
+
+    function buildLineBox(clientRects, paragraphIndex, localLineIndex, globalLineIndex) {
+        let minLeft = Infinity;
+        let maxRight = -Infinity;
+        let minTop = Infinity;
+        let maxBottom = -Infinity;
+
+        for (let i = 0; i < clientRects.length; i = i + 1) {
+            const r = clientRects[i];
+            if (r.left < minLeft) { minLeft = r.left; }
+            if (r.right > maxRight) { maxRight = r.right; }
+            if (r.top < minTop) { minTop = r.top; }
+            if (r.bottom > maxBottom) { maxBottom = r.bottom; }
+        }
+
+        const scrollX = window.scrollX || window.pageXOffset || 0;
+        const scrollY = window.scrollY || window.pageYOffset || 0;
+
+        return {
+            paragraphIndex: paragraphIndex,
+            localLineIndex: localLineIndex,
+            lineIndex: globalLineIndex,
+            top: minTop + scrollY - VERTICAL_TOLERANCE_PX,
+            bottom: maxBottom + scrollY + VERTICAL_TOLERANCE_PX,
+            left: minLeft + scrollX - HORIZONTAL_EXPANSION_PX,
+            right: maxRight + scrollX + HORIZONTAL_EXPANSION_PX,
+            topRaw: minTop + scrollY,
+            bottomRaw: maxBottom + scrollY,
+            height: maxBottom - minTop,
+            width: maxRight - minLeft
+        };
     }
 
     function rebuildBoundingBoxCache() {
         lineBoundingBoxes = [];
         paragraphBoundingBoxes = [];
 
-        if (!textContainerSelector) {
-            return;
-        }
-
-        containerElement = document.querySelector(textContainerSelector);
         if (!containerElement) {
             return;
         }
 
-        const paragraphNodes = containerElement.querySelectorAll("p, .paragraph");
-        let currentGlobalLineIndex = 0;
+        const scrollX = window.scrollX || window.pageXOffset || 0;
+        const scrollY = window.scrollY || window.pageYOffset || 0;
 
-        for (let pIndex = 0; pIndex < paragraphNodes.length; pIndex++) {
-            const paragraph = paragraphNodes[pIndex];
-            const pRect = paragraph.getBoundingClientRect();
-            const pageTop = pRect.top + window.scrollY;
-            const pageBottom = pRect.bottom + window.scrollY;
+        const paragraphElements = containerElement.querySelectorAll("p, .paragraph");
+
+        if (paragraphElements.length === 0) {
+            const containerRect = containerElement.getBoundingClientRect();
+            paragraphBoundingBoxes.push({
+                paragraphIndex: 0,
+                element: containerElement,
+                top: containerRect.top + scrollY,
+                bottom: containerRect.bottom + scrollY,
+                left: containerRect.left + scrollX,
+                right: containerRect.right + scrollX
+            });
+            return;
+        }
+
+        let globalLineIndex = 0;
+
+        for (let p = 0; p < paragraphElements.length; p = p + 1) {
+            const pElement = paragraphElements[p];
+            const pRect = pElement.getBoundingClientRect();
 
             paragraphBoundingBoxes.push({
-                paragraphIndex: pIndex,
-                element: paragraph,
-                left: pRect.left,
-                right: pRect.right,
-                top: pageTop,
-                bottom: pageBottom
+                paragraphIndex: p,
+                element: pElement,
+                top: pRect.top + scrollY,
+                bottom: pRect.bottom + scrollY,
+                left: pRect.left + scrollX,
+                right: pRect.right + scrollX
             });
 
-            const preDefinedLineNodes = paragraph.querySelectorAll(".text-line");
-            if (preDefinedLineNodes.length > 0) {
-                for (let lIndex = 0; lIndex < preDefinedLineNodes.length; lIndex++) {
-                    const lineElem = preDefinedLineNodes[lIndex];
-                    const lRect = lineElem.getBoundingClientRect();
-                    const lineTop = lRect.top + window.scrollY;
-                    const lineBottom = lRect.bottom + window.scrollY;
+            const paragraphLines = extractLinesFromParagraphUsingRange(pElement, p, globalLineIndex);
 
-                    lineBoundingBoxes.push({
-                        lineIndex: currentGlobalLineIndex,
-                        localLineIndex: lIndex,
-                        paragraphIndex: pIndex,
-                        element: lineElem,
-                        left: lRect.left - HORIZONTAL_EXPANSION_PX,
-                        right: lRect.right + HORIZONTAL_EXPANSION_PX,
-                        topRaw: lineTop,
-                        bottomRaw: lineBottom,
-                        top: lineTop - VERTICAL_TOLERANCE_PX,
-                        bottom: lineBottom + VERTICAL_TOLERANCE_PX
-                    });
-                    currentGlobalLineIndex++;
-                }
+            if (paragraphLines.length === 0) {
+                lineBoundingBoxes.push({
+                    paragraphIndex: p,
+                    localLineIndex: 0,
+                    lineIndex: globalLineIndex,
+                    top: pRect.top + scrollY - VERTICAL_TOLERANCE_PX,
+                    bottom: pRect.bottom + scrollY + VERTICAL_TOLERANCE_PX,
+                    left: pRect.left + scrollX - HORIZONTAL_EXPANSION_PX,
+                    right: pRect.right + scrollX + HORIZONTAL_EXPANSION_PX,
+                    topRaw: pRect.top + scrollY,
+                    bottomRaw: pRect.bottom + scrollY,
+                    height: pRect.height,
+                    width: pRect.width
+                });
+                globalLineIndex = globalLineIndex + 1;
             } else {
-                const result = extractLinesFromParagraphUsingRange(paragraph, pIndex, currentGlobalLineIndex);
-                for (let r = 0; r < result.lines.length; r++) {
-                    lineBoundingBoxes.push(result.lines[r]);
+                for (let l = 0; l < paragraphLines.length; l = l + 1) {
+                    lineBoundingBoxes.push(paragraphLines[l]);
                 }
-                currentGlobalLineIndex = result.nextGlobalIndex;
+                globalLineIndex = globalLineIndex + paragraphLines.length;
             }
         }
 
@@ -208,21 +246,28 @@ const DOMMapper = (function () {
     }
 
     function findLineAtPoint(gazeX, gazeY) {
-        const scrollAdjustedY = gazeY + window.scrollY;
+        const scrollX = window.scrollX || window.pageXOffset || 0;
+        const scrollY = window.scrollY || window.pageYOffset || 0;
+
+        const scrollAdjustedX = gazeX + scrollX;
+        const scrollAdjustedY = gazeY + scrollY;
 
         let bestLineMatch = null;
-        let bestLineDistance = Infinity;
+        let smallestVerticalDistance = Infinity;
 
-        for (let i = 0; i < lineBoundingBoxes.length; i++) {
+        for (let i = 0; i < lineBoundingBoxes.length; i = i + 1) {
             const box = lineBoundingBoxes[i];
-            if (scrollAdjustedY >= box.top && scrollAdjustedY <= box.bottom) {
-                if (gazeX >= box.left && gazeX <= box.right) {
-                    const centerY = (box.top + box.bottom) / 2;
-                    const distance = Math.abs(scrollAdjustedY - centerY);
-                    if (distance < bestLineDistance) {
-                        bestLineDistance = distance;
-                        bestLineMatch = box;
-                    }
+
+            const inVerticalBounds = scrollAdjustedY >= box.top && scrollAdjustedY <= box.bottom;
+            const inHorizontalBounds = gazeX >= box.left && gazeX <= box.right;
+
+            if (inVerticalBounds && inHorizontalBounds) {
+                const lineCenterY = (box.top + box.bottom) / 2;
+                const distanceToCenter = Math.abs(scrollAdjustedY - lineCenterY);
+
+                if (distanceToCenter < smallestVerticalDistance) {
+                    smallestVerticalDistance = distanceToCenter;
+                    bestLineMatch = box;
                 }
             }
         }
@@ -254,7 +299,7 @@ const DOMMapper = (function () {
             };
         }
 
-        for (let p = 0; p < paragraphBoundingBoxes.length; p++) {
+        for (let p = 0; p < paragraphBoundingBoxes.length; p = p + 1) {
             const pBox = paragraphBoundingBoxes[p];
             if (scrollAdjustedY >= pBox.top && scrollAdjustedY <= pBox.bottom &&
                 gazeX >= (pBox.left - HORIZONTAL_EXPANSION_PX) && gazeX <= (pBox.right + HORIZONTAL_EXPANSION_PX)) {
@@ -282,7 +327,7 @@ const DOMMapper = (function () {
         let closestLine = null;
         let closestVerticalDistance = Infinity;
 
-        for (let i = 0; i < lineBoundingBoxes.length; i++) {
+        for (let i = 0; i < lineBoundingBoxes.length; i = i + 1) {
             const box = lineBoundingBoxes[i];
             const centerY = (box.top + box.bottom) / 2;
             const dist = Math.abs(scrollAdjustedY - centerY);
@@ -334,112 +379,111 @@ const DOMMapper = (function () {
         };
     }
 
-    function createDebugOverlay() {
-        if (debugOverlayCanvas) {
-            return;
-        }
-        debugOverlayCanvas = document.createElement("canvas");
-        debugOverlayCanvas.id = "dom-mapper-debug-canvas";
-        debugOverlayCanvas.style.position = "fixed";
-        debugOverlayCanvas.style.top = "0";
-        debugOverlayCanvas.style.left = "0";
-        debugOverlayCanvas.style.width = "100vw";
-        debugOverlayCanvas.style.height = "100vh";
-        debugOverlayCanvas.style.pointerEvents = "none";
-        debugOverlayCanvas.style.zIndex = "8000";
-        debugOverlayCanvas.style.display = "none";
-        document.body.appendChild(debugOverlayCanvas);
-    }
-
-    function renderDebugOverlay(activeLineIndex, activeParaIndex) {
-        if (!isDebugOverlayVisible) {
-            return;
-        }
-
-        createDebugOverlay();
-        debugOverlayCanvas.style.display = "block";
-        debugOverlayCanvas.width = window.innerWidth;
-        debugOverlayCanvas.height = window.innerHeight;
-
-        const ctx = debugOverlayCanvas.getContext("2d");
-        ctx.clearRect(0, 0, debugOverlayCanvas.width, debugOverlayCanvas.height);
-
-        for (let p = 0; p < paragraphBoundingBoxes.length; p++) {
-            const pBox = paragraphBoundingBoxes[p];
-            const viewTop = pBox.top - window.scrollY;
-            const height = pBox.bottom - pBox.top;
-
-            ctx.strokeStyle = p.paragraphIndex === activeParaIndex ? "rgba(99, 102, 241, 0.9)" : "rgba(99, 102, 241, 0.3)";
-            ctx.lineWidth = p.paragraphIndex === activeParaIndex ? 2 : 1;
-            ctx.setLineDash([4, 4]);
-            ctx.strokeRect(pBox.left, viewTop, pBox.right - pBox.left, height);
-            ctx.setLineDash([]);
-        }
-
-        for (let i = 0; i < lineBoundingBoxes.length; i++) {
-            const box = lineBoundingBoxes[i];
-            const viewTop = box.top - window.scrollY;
-            const height = box.bottom - box.top;
-
-            const isFocused = box.lineIndex === activeLineIndex;
-
-            ctx.fillStyle = isFocused ? "rgba(239, 68, 68, 0.18)" : "rgba(16, 185, 129, 0.08)";
-            ctx.fillRect(box.left, viewTop, box.right - box.left, height);
-
-            ctx.strokeStyle = isFocused ? "rgba(239, 68, 68, 0.85)" : "rgba(16, 185, 129, 0.35)";
-            ctx.lineWidth = isFocused ? 2 : 1;
-            ctx.strokeRect(box.left, viewTop, box.right - box.left, height);
-
-            ctx.fillStyle = isFocused ? "#f87171" : "#34d399";
-            ctx.font = "10px monospace";
-            ctx.fillText("L" + box.lineIndex, box.left + 4, viewTop + 12);
-        }
+    function findLineAtCoordinates(x, y) {
+        return findLineAtPoint(x, y);
     }
 
     function toggleDebugOverlay(forceState) {
-        if (typeof forceState === "boolean") {
+        if (forceState !== undefined) {
             isDebugOverlayVisible = forceState;
         } else {
             isDebugOverlayVisible = !isDebugOverlayVisible;
         }
 
-        if (!isDebugOverlayVisible && debugOverlayCanvas) {
-            debugOverlayCanvas.style.display = "none";
-        } else if (isDebugOverlayVisible) {
+        if (isDebugOverlayVisible) {
+            createDebugCanvas();
             renderDebugOverlay();
+        } else {
+            removeDebugCanvas();
         }
+
         return isDebugOverlayVisible;
+    }
+
+    function createDebugCanvas() {
+        if (debugOverlayCanvas) {
+            return;
+        }
+
+        debugOverlayCanvas = document.createElement("canvas");
+        debugOverlayCanvas.id = "aoi-debug-overlay-canvas";
+        debugOverlayCanvas.style.position = "absolute";
+        debugOverlayCanvas.style.top = "0";
+        debugOverlayCanvas.style.left = "0";
+        debugOverlayCanvas.style.width = "100%";
+        debugOverlayCanvas.style.height = "100%";
+        debugOverlayCanvas.style.pointerEvents = "none";
+        debugOverlayCanvas.style.zIndex = "9998";
+
+        document.body.appendChild(debugOverlayCanvas);
+    }
+
+    function removeDebugCanvas() {
+        if (debugOverlayCanvas && debugOverlayCanvas.parentNode) {
+            debugOverlayCanvas.parentNode.removeChild(debugOverlayCanvas);
+            debugOverlayCanvas = null;
+        }
+    }
+
+    function renderDebugOverlay() {
+        if (!debugOverlayCanvas) {
+            return;
+        }
+
+        const scrollWidth = Math.max(document.body.scrollWidth, window.innerWidth);
+        const scrollHeight = Math.max(document.body.scrollHeight, window.innerHeight);
+
+        debugOverlayCanvas.width = scrollWidth;
+        debugOverlayCanvas.height = scrollHeight;
+
+        const ctx = debugOverlayCanvas.getContext("2d");
+        ctx.clearRect(0, 0, scrollWidth, scrollHeight);
+
+        for (let p = 0; p < paragraphBoundingBoxes.length; p = p + 1) {
+            const pBox = paragraphBoundingBoxes[p];
+            ctx.strokeStyle = "rgba(79, 70, 229, 0.45)";
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(pBox.left, pBox.top, pBox.right - pBox.left, pBox.bottom - pBox.top);
+
+            ctx.fillStyle = "rgba(79, 70, 229, 0.65)";
+            ctx.font = "bold 10px monospace";
+            ctx.fillText("P" + pBox.paragraphIndex, pBox.left + 4, pBox.top + 13);
+        }
+
+        for (let i = 0; i < lineBoundingBoxes.length; i = i + 1) {
+            const line = lineBoundingBoxes[i];
+            ctx.strokeStyle = "rgba(16, 185, 129, 0.65)";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 3]);
+            ctx.strokeRect(line.left, line.top, line.right - line.left, line.bottom - line.top);
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = "rgba(16, 185, 129, 0.9)";
+            ctx.font = "9px monospace";
+            ctx.fillText("L" + line.lineIndex, line.left + 2, line.top + 9);
+        }
     }
 
     function refreshOnResize() {
         window.addEventListener("resize", function () {
-            rebuildBoundingBoxCache();
+            debouncedRebuild();
         });
-
         window.addEventListener("scroll", function () {
-            if (isDebugOverlayVisible) {
-                renderDebugOverlay();
-            }
-        }, { passive: true });
-    }
-
-    function getLineCount() {
-        return lineBoundingBoxes.length;
-    }
-
-    function getParagraphCount() {
-        return paragraphBoundingBoxes.length;
+            debouncedRebuild();
+        });
     }
 
     return {
         setTextContainer: setTextContainer,
-        rebuildBoundingBoxCache: rebuildBoundingBoxCache,
+        rebuildBoundingBoxCache: debouncedRebuild,
         findLineAtPoint: findLineAtPoint,
-        refreshOnResize: refreshOnResize,
+        findLineAtCoordinates: findLineAtCoordinates,
         toggleDebugOverlay: toggleDebugOverlay,
-        renderDebugOverlay: renderDebugOverlay,
-        getLineCount: getLineCount,
-        getParagraphCount: getParagraphCount
+        refreshOnResize: refreshOnResize
     };
 
 })();
+
+if (typeof window !== "undefined") {
+    window.DOMMapper = DOMMapper;
+}
