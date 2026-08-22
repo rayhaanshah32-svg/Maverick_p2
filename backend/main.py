@@ -13,6 +13,13 @@ try:
 except ImportError:
     HTTPX_AVAILABLE = False
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    load_dotenv(Path(__file__).parent.parent / ".env")
+except ImportError:
+    pass
+
 from extractor import (
     extract_pdf,
     extract_docx,

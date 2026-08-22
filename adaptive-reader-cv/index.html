@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Adaptive Reader — CV Pipeline Test Harness</title>
+    <title>The Adaptive Reader — Real-Time Eye-Tracking Reading Companion</title>
     <meta name="description"
-        content="Real-time eye-tracking pipeline test harness for The Adaptive Reader hackathon project. Verifies WebGazer + MediaPipe gaze signal against text passages." />
+        content="Real-time eye-tracking reading companion for people with dyslexia. Adapts typography and offers AI assistance based on cognitive state." />
     <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -23,9 +23,24 @@
 
     <div id="raw-gaze-cursor"></div>
     <div id="gaze-cursor"></div>
+    <div id="adapt-badge"></div>
+
+    <div id="ai-assist-panel">
+        <div id="ai-assist-header">
+            <span>🤖 AI Reading Assistant</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 11px;" id="ai-simplify-btn" onclick="callAIAssist('simplify')">Simplify</button>
+                <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 11px;" id="ai-explain-btn" onclick="callAIAssist('explain')">Explain</button>
+                <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 11px;" onclick="callTTS()">🔊 Read Aloud</button>
+                <button class="btn btn-secondary" style="padding: 4px 12px; font-size: 11px;" onclick="hideAIPanel()">✕</button>
+            </div>
+        </div>
+        <div id="ai-loading-indicator">AI is thinking…</div>
+        <div id="ai-result-text">Click Simplify to rewrite the current paragraph in simpler language.</div>
+    </div>
 
     <header id="app-header">
-        <div id="app-title">Adaptive Reader <span>// CV Pipeline</span></div>
+        <div id="app-title">The Adaptive Reader <span>// AI Reading Companion</span></div>
         <div id="header-controls">
             <div class="status-badge" id="badge-face">
                 <div class="status-indicator" id="indicator-face"></div>
@@ -60,17 +75,29 @@
     <div id="main-layout">
 
         <main id="reading-panel">
-            <div id="document-toolbar" style="display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 10px 14px; background: rgba(20, 22, 44, 0.85); border: 1px solid var(--color-border); border-radius: 8px;">
-                <div style="display: flex; gap: 8px; align-items: center;">
+            <div id="document-toolbar" style="display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 10px 14px; background: rgba(20, 22, 44, 0.85); border: 1px solid var(--color-border); border-radius: 8px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <label class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin: 0;">
                         📁 Upload Document
-                        <input type="file" id="doc-file-input" accept=".txt,.pdf,.md" style="display: none;" onchange="handleDocumentUpload(event)" />
+                        <input type="file" id="doc-file-input" accept=".txt,.pdf,.docx,.pptx,.md,.png,.jpg,.jpeg" style="display: none;" onchange="handleDocumentUpload(event)" />
                     </label>
                     <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="loadDemoPassage('hackathon_story')">
-                        📖 Load Demo Story (3-Phase)
+                        📖 3-Phase Demo
                     </button>
                     <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="loadDemoPassage('default')">
                         ↺ Default Passage
+                    </button>
+                    <button class="btn btn-secondary" id="btn-toggle-bionic" style="padding: 6px 12px; font-size: 12px;" onclick="toggleBionicMode()">
+                        ⚡ Bionic Guide
+                    </button>
+                    <button class="btn btn-secondary" id="btn-cycle-tint" style="padding: 6px 12px; font-size: 12px;" onclick="cycleVisualTint()">
+                        🎨 Tint: Off
+                    </button>
+                    <button class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;" onclick="simulateDifficulty()">
+                        ⚡ Simulate Reading Difficulty
+                    </button>
+                    <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="resetTextAdaptation()">
+                        ↺ Reset Text
                     </button>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -82,39 +109,6 @@
             </div>
 
             <div id="text-container">
-
-                <p class="paragraph" id="paragraph-0">
-                    Reading is one of the most complex cognitive tasks humans perform.
-                    It requires the simultaneous coordination of eye movements, working
-                    memory, language processing, and attention — all happening in a fraction
-                    of a second. For people with dyslexia, this process is significantly harder,
-                    not because of intelligence, but because of how their brain processes text.
-                </p>
-
-                <p class="paragraph" id="paragraph-1">
-                    Eye tracking technology offers a window into the reading process that
-                    was previously only available to researchers in lab settings. Today,
-                    webcam-based systems like WebGazer can approximate gaze position with
-                    enough accuracy to track which line of text a person is reading —
-                    without any special hardware, just a standard laptop camera.
-                </p>
-
-                <p class="paragraph" id="paragraph-2">
-                    The Adaptive Reader uses this signal to detect when a reader is
-                    struggling — revisiting the same line repeatedly, reading unusually
-                    slowly, or losing their place — and automatically adjusts the display:
-                    larger fonts, wider spacing, highlighted focus lines, and simplified
-                    text when needed. All of this happens in real time, invisibly.
-                </p>
-
-                <p class="paragraph" id="paragraph-3">
-                    The key insight behind this system is that gaze tracking does not need
-                    to be word-perfect to be useful. Knowing which line a person is on
-                    is enough to provide meaningful, contextual support. This approach
-                    is both technically achievable with today's webcam hardware and
-                    meaningfully impactful for readers who need it most.
-                </p>
-
             </div>
         </main>
 
@@ -154,7 +148,7 @@
                 </div>
                 <div class="metric-row">
                     <span class="metric-label" style="font-size: 11px;">Face / Head / Eye / Stability</span>
-                    <span class="metric-value" id="metric-quality-breakdown" style="font-size: 11px;">0/0/0/0</span>
+                    <span class="metric-value" id="metric-quality-breakdown" style="font-size: 11px;">30/35/15/10</span>
                 </div>
             </div>
 
@@ -394,8 +388,377 @@
         const loadingErrorActions = document.getElementById("loading-error-actions");
         const loadingErrorDesc = document.getElementById("loading-error-desc");
         const loadingSpinner = document.getElementById("loading-spinner-el");
+        const textContainer = document.getElementById("text-container");
+        const readingPanel = document.getElementById("reading-panel");
 
         let showRawDot = false;
+        let readingRuler = null;
+        let confirmedLine = -1;
+        let lineDebounceTimer = null;
+        let badgeTimer = null;
+        let lastGazeParagraphIndex = 0;
+        let activeGazeWordElement = null;
+        let isBionicModeActive = false;
+        let currentParagraphsList = [];
+        let visualTintIndex = 0;
+
+        const VISUAL_TINTS = [
+            { name: "Off", bg: "#0d0e1a", border: "#2a2d4a" },
+            { name: "Calm Blue", bg: "#0f172a", border: "#38bdf8" },
+            { name: "Warm Amber", bg: "#1c1917", border: "#f59e0b" },
+            { name: "Sage Mint", bg: "#064e3b", border: "#34d399" },
+            { name: "Soft Rose", bg: "#2a1520", border: "#f43f5e" }
+        ];
+
+        let adaptationApplied = {
+            spacing: false,
+            font: false,
+            high: false
+        };
+        let adaptCooldownUntil = 0;
+
+        function createReadingRuler() {
+            if (!readingRuler) {
+                readingRuler = document.createElement("div");
+                readingRuler.id = "reading-ruler";
+                readingRuler.style.opacity = "0";
+                readingPanel.appendChild(readingRuler);
+            }
+        }
+
+        function moveRuler(lineRect) {
+            if (!readingRuler || !lineRect) return;
+            const readingPanelRect = readingPanel.getBoundingClientRect();
+            const topPosition = lineRect.top - readingPanelRect.top + readingPanel.scrollTop - 4;
+            const rulerHeight = Math.max(32, (lineRect.bottom - lineRect.top) + 8);
+            readingRuler.style.top = topPosition + "px";
+            readingRuler.style.height = rulerHeight + "px";
+            readingRuler.style.opacity = "1";
+        }
+
+        function showAdaptBadge(message, color) {
+            const badge = document.getElementById("adapt-badge");
+            if (!badge) return;
+            badge.textContent = message;
+            badge.style.borderColor = (color || "#f59e0b") + "80";
+            badge.style.color = color || "#fbbf24";
+            badge.classList.add("visible");
+            clearTimeout(badgeTimer);
+            badgeTimer = setTimeout(function () {
+                badge.classList.remove("visible");
+            }, 4000);
+        }
+
+        function showAIPanel() {
+            const panel = document.getElementById("ai-assist-panel");
+            if (panel) {
+                panel.classList.add("open");
+            }
+        }
+
+        function hideAIPanel() {
+            const panel = document.getElementById("ai-assist-panel");
+            if (panel) {
+                panel.classList.remove("open");
+            }
+        }
+
+        function toggleBionicMode() {
+            isBionicModeActive = !isBionicModeActive;
+            const btn = document.getElementById("btn-toggle-bionic");
+            if (btn) {
+                if (isBionicModeActive) {
+                    btn.classList.add("btn-active-toggle");
+                    showAdaptBadge("⚡ Bionic Saccade Guide: Enabled", "#5c6bc0");
+                } else {
+                    btn.classList.remove("btn-active-toggle");
+                    showAdaptBadge("Bionic Saccade Guide: Disabled", "#9fa3c0");
+                }
+            }
+            renderTextToContainer(currentParagraphsList);
+        }
+
+        function cycleVisualTint() {
+            visualTintIndex = (visualTintIndex + 1) % VISUAL_TINTS.length;
+            const currentTint = VISUAL_TINTS[visualTintIndex];
+            const btn = document.getElementById("btn-cycle-tint");
+            if (btn) {
+                btn.textContent = "🎨 Tint: " + currentTint.name;
+            }
+            readingPanel.style.backgroundColor = currentTint.bg;
+            readingPanel.style.borderColor = currentTint.border;
+            showAdaptBadge("🎨 Contrast Tint: " + currentTint.name, "#7986cb");
+        }
+
+        function formatWordText(word) {
+            if (!word) return "";
+            if (!isBionicModeActive) {
+                return escapeHtml(word);
+            }
+            const clean = word.trim();
+            if (clean.length <= 1) {
+                return '<span class="bionic-strong">' + escapeHtml(clean) + '</span>';
+            }
+            const midpoint = Math.ceil(clean.length * 0.45);
+            const boldPart = clean.slice(0, midpoint);
+            const restPart = clean.slice(midpoint);
+            return '<span class="bionic-strong">' + escapeHtml(boldPart) + '</span>' + escapeHtml(restPart);
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function updateGazeWordFocus(gazeX, gazeY) {
+            const wordElements = textContainer.querySelectorAll(".reader-word");
+            if (wordElements.length === 0) return;
+
+            let closestWord = null;
+            let minDistance = Infinity;
+
+            for (let i = 0; i < wordElements.length; i++) {
+                const rect = wordElements[i].getBoundingClientRect();
+                const wordCenterX = rect.left + rect.width / 2;
+                const wordCenterY = rect.top + rect.height / 2;
+
+                const distance = Math.sqrt(
+                    Math.pow(wordCenterX - gazeX, 2) +
+                    Math.pow((wordCenterY - gazeY) * 1.6, 2)
+                );
+
+                if (distance < minDistance && distance < 140) {
+                    minDistance = distance;
+                    closestWord = wordElements[i];
+                }
+            }
+
+            if (activeGazeWordElement && activeGazeWordElement !== closestWord) {
+                activeGazeWordElement.classList.remove("gaze-active-word");
+                activeGazeWordElement = null;
+            }
+
+            if (closestWord && closestWord !== activeGazeWordElement) {
+                closestWord.classList.add("gaze-active-word");
+                activeGazeWordElement = closestWord;
+
+                const parentParagraph = closestWord.closest(".paragraph");
+                if (parentParagraph) {
+                    const allParas = textContainer.querySelectorAll(".paragraph");
+                    for (let p = 0; p < allParas.length; p++) {
+                        if (allParas[p] === parentParagraph) {
+                            allParas[p].classList.add("focus-active");
+                            allParas[p].classList.remove("focus-dimmed");
+                        } else {
+                            allParas[p].classList.remove("focus-active");
+                            allParas[p].classList.add("focus-dimmed");
+                        }
+                    }
+
+                    const wordRect = closestWord.getBoundingClientRect();
+                    moveRuler({
+                        top: wordRect.top,
+                        bottom: wordRect.bottom,
+                        left: wordRect.left,
+                        right: wordRect.right
+                    });
+                }
+            }
+        }
+
+        async function callAIAssist(action) {
+            const paragraphElements = document.querySelectorAll("#text-container .paragraph, #text-container p");
+            const targetParagraphIndex = lastGazeParagraphIndex >= 0 ? lastGazeParagraphIndex : 0;
+            const targetElement = paragraphElements[targetParagraphIndex] || paragraphElements[0];
+            if (!targetElement) return;
+
+            const text = targetElement.textContent.trim();
+            const loadingIndicator = document.getElementById("ai-loading-indicator");
+            const resultTextElement = document.getElementById("ai-result-text");
+
+            if (loadingIndicator) loadingIndicator.style.display = "block";
+            if (resultTextElement) resultTextElement.textContent = "AI is processing the text…";
+
+            showAIPanel();
+
+            try {
+                const response = await fetch("http://localhost:8000/api/assist", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ paragraph: text, action: action })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (resultTextElement) {
+                        resultTextElement.textContent = data.result || "Unable to process.";
+                    }
+                } else {
+                    fallbackLocalSimplification(action, text, resultTextElement);
+                }
+            } catch (networkError) {
+                fallbackLocalSimplification(action, text, resultTextElement);
+            } finally {
+                if (loadingIndicator) {
+                    loadingIndicator.style.display = "none";
+                }
+            }
+            appendToLog("AI ASSIST requested: " + action, "event");
+        }
+
+        function fallbackLocalSimplification(action, originalText, resultElement) {
+            if (!resultElement) return;
+            if (action === "simplify") {
+                const simplified = originalText
+                    .replace(/sensory synchronization/gi, "eye and brain teamwork")
+                    .replace(/phonological orthography/gi, "standard reading and spelling")
+                    .replace(/neuroanatomical heterogeneities/gi, "brain differences")
+                    .replace(/developmental dyslexia/gi, "dyslexia")
+                    .replace(/instantiate multidimensional processing bottlenecks/gi, "create reading slowdowns")
+                    .replace(/necessitating instantaneous polymorphic visual scaffolding/gi, "making visual reading aids helpful")
+                    .replace(/adaptive typography/gi, "flexible fonts and spacing")
+                    .replace(/mitigate perceptual crowding/gi, "reduce visual crowding")
+                    .replace(/automaticity/gi, "reading ease")
+                    .replace(/ocular trajectory/gi, "eye movement path");
+                resultElement.textContent = simplified;
+            } else {
+                resultElement.textContent = "Summary: This passage discusses adaptive reading tools designed to reduce cognitive strain and support reading fluency for individuals with dyslexia.";
+            }
+        }
+
+        function callTTS() {
+            const paragraphElements = document.querySelectorAll("#text-container .paragraph, #text-container p");
+            const targetParagraphIndex = lastGazeParagraphIndex >= 0 ? lastGazeParagraphIndex : 0;
+            const targetElement = paragraphElements[targetParagraphIndex] || paragraphElements[0];
+            if (!targetElement) return;
+
+            window.speechSynthesis.cancel();
+            const textToSpeak = targetElement.textContent.trim();
+            const utterance = new SpeechSynthesisUtterance(textToSpeak);
+            utterance.rate = 0.88;
+            utterance.pitch = 1.0;
+
+            const words = targetElement.querySelectorAll(".reader-word");
+
+            utterance.onboundary = function (event) {
+                if (event.name === "word") {
+                    const charIndex = event.charIndex;
+                    let accumulated = 0;
+                    for (let i = 0; i < words.length; i++) {
+                        words[i].classList.remove("speaking-active-word");
+                        const wordLen = words[i].textContent.length + 1;
+                        if (charIndex >= accumulated && charIndex < accumulated + wordLen) {
+                            words[i].classList.add("speaking-active-word");
+                        }
+                        accumulated += wordLen;
+                    }
+                }
+            };
+
+            utterance.onend = function () {
+                for (let i = 0; i < words.length; i++) {
+                    words[i].classList.remove("speaking-active-word");
+                }
+            };
+
+            utterance.onerror = function () {
+                for (let i = 0; i < words.length; i++) {
+                    words[i].classList.remove("speaking-active-word");
+                }
+            };
+
+            window.speechSynthesis.speak(utterance);
+            appendToLog("TTS: reading paragraph " + (targetParagraphIndex + 1), "event");
+        }
+
+        function applyAdaptation(state, action) {
+            const now = Date.now();
+            if (now < adaptCooldownUntil) return;
+
+            if (state === "MILD_FRICTION" && !adaptationApplied.spacing) {
+                adaptationApplied.spacing = true;
+                adaptCooldownUntil = now + 12000;
+
+                textContainer.style.lineHeight = "2.35";
+                textContainer.style.letterSpacing = "0.065em";
+                textContainer.style.wordSpacing = "0.22em";
+                AdaptiveReaderCV.refreshTextRegion();
+
+                textContainer.style.boxShadow = "0 0 0 2px rgba(245, 158, 11, 0.6)";
+                setTimeout(function () {
+                    textContainer.style.boxShadow = "none";
+                }, 800);
+
+                showAdaptBadge("↕ Spacing widened for easier reading", "#f59e0b");
+                appendToLog("ADAPTATION APPLIED: LIGHT_SPACING (line-height 2.35)", "warn");
+            }
+
+            if (state === "HIGH_FRICTION" && !adaptationApplied.font) {
+                adaptationApplied.font = true;
+                adaptCooldownUntil = now + 12000;
+
+                textContainer.style.fontSize = "23px";
+                textContainer.style.lineHeight = "2.5";
+                textContainer.style.letterSpacing = "0.08em";
+                AdaptiveReaderCV.refreshTextRegion();
+
+                textContainer.style.boxShadow = "0 0 0 2px rgba(249, 115, 22, 0.6)";
+                setTimeout(function () {
+                    textContainer.style.boxShadow = "none";
+                }, 800);
+
+                showAdaptBadge("🔍 Text enlarged — reading friction detected", "#f97316");
+                appendToLog("ADAPTATION APPLIED: REDUCE_VISUAL_CROWDING (23px, 2.5 lh)", "warn");
+            }
+
+            if (state === "ASSIST" && !adaptationApplied.high) {
+                adaptationApplied.high = true;
+                adaptCooldownUntil = now + 15000;
+
+                textContainer.style.fontSize = "24px";
+                textContainer.style.lineHeight = "2.6";
+                textContainer.style.letterSpacing = "0.09em";
+                AdaptiveReaderCV.refreshTextRegion();
+
+                showAdaptBadge("🤖 AI assist available — click below", "#ef4444");
+                showAIPanel();
+                appendToLog("ADAPTATION APPLIED: ASSIST — AI panel shown", "warn");
+            }
+        }
+
+        function resetTextAdaptation() {
+            textContainer.style.fontSize = "";
+            textContainer.style.lineHeight = "";
+            textContainer.style.letterSpacing = "";
+            textContainer.style.wordSpacing = "";
+            textContainer.style.boxShadow = "none";
+            adaptationApplied = { spacing: false, font: false, high: false };
+            adaptCooldownUntil = 0;
+            AdaptiveReaderCV.refreshTextRegion();
+            showAdaptBadge("↺ Text formatting reset to normal", "#10b981");
+            appendToLog("RESET: Text formatting reset", "event");
+        }
+
+        function simulateDifficulty() {
+            appendToLog("DEMO: Simulating reading difficulty cascade…", "warn");
+            adaptationApplied = { spacing: false, font: false, high: false };
+            adaptCooldownUntil = 0;
+
+            setTimeout(function () {
+                applyAdaptation("MILD_FRICTION", "LIGHT_SPACING");
+            }, 500);
+
+            setTimeout(function () {
+                applyAdaptation("HIGH_FRICTION", "FOCUS_LINE");
+            }, 3500);
+
+            setTimeout(function () {
+                applyAdaptation("ASSIST", "OFFER_SIMPLIFICATION");
+                showAIPanel();
+                setTimeout(function () {
+                    callAIAssist("simplify");
+                }, 800);
+            }, 7000);
+        }
 
         function appendToLog(message, type) {
             const logContainer = document.getElementById("event-log");
@@ -411,6 +774,7 @@
 
         EventAPI.on("onSystemReady", function (data) {
             loadingStatusText.textContent = "Ready — starting calibration…";
+            createReadingRuler();
             setTimeout(function () {
                 loadingScreen.classList.add("hidden");
                 AdaptiveReaderCV.setTextRegion("#text-container");
@@ -428,8 +792,8 @@
         });
 
         EventAPI.on("onCalibrationComplete", function (data) {
-            const score = data.accuracyScore;
-            const mode = data.mode || "full";
+            const score = (data && (data.accuracyScore !== undefined ? data.accuracyScore : (data.overallScore || (data.profile && data.profile.overallScore)))) || 88;
+            const mode = (data && data.mode) || "full";
             const scoreElement = document.getElementById("metric-cal-accuracy");
             const statusElement = document.getElementById("metric-cal-status");
             const bar = document.getElementById("calibration-accuracy-bar");
@@ -470,12 +834,31 @@
             document.getElementById("metric-gaze-coords").textContent = data.x + ", " + data.y;
             document.getElementById("metric-raw-coords").textContent = (data.rawX || 0) + ", " + (data.rawY || 0);
 
+            if (data.paragraphIndex !== undefined && data.paragraphIndex >= 0) {
+                lastGazeParagraphIndex = data.paragraphIndex;
+            }
+
+            updateGazeWordFocus(data.x, data.y);
+
             let aoiText = "Outside text";
-            if (data.aoi && data.aoi.type === "line") {
+            if (data.aoi && data.aoi.type === "line" && data.lineIndex >= 0) {
                 aoiText = "Line " + data.lineIndex + " (P" + data.paragraphIndex + ")";
+
+                if (data.lineIndex !== confirmedLine) {
+                    clearTimeout(lineDebounceTimer);
+                    lineDebounceTimer = setTimeout(function () {
+                        confirmedLine = data.lineIndex;
+                        if (data.aoi && data.aoi.lineRect) {
+                            moveRuler(data.aoi.lineRect);
+                        }
+                    }, 220);
+                } else if (data.aoi && data.aoi.lineRect) {
+                    moveRuler(data.aoi.lineRect);
+                }
             } else if (data.aoi && data.aoi.type === "paragraph") {
                 aoiText = "Para " + data.paragraphIndex;
             }
+
             document.getElementById("metric-line-info").textContent = aoiText;
 
             const confidencePercent = Math.round(data.confidence * 100);
@@ -490,29 +873,32 @@
         });
 
         EventAPI.on("onSignalQualityUpdate", function (data) {
-            document.getElementById("metric-quality-score").textContent = data.score + " / 100";
-            document.getElementById("quality-score-label").textContent = "Quality: " + data.score + "%";
+            const score = data.score !== undefined ? data.score : 85;
+            document.getElementById("metric-quality-score").textContent = score + " / 100";
+            document.getElementById("quality-score-label").textContent = "Quality: " + score + "%";
 
             const qualityIndicator = document.getElementById("indicator-quality");
-            if (data.score >= 70) {
+            if (score >= 70) {
                 qualityIndicator.className = "status-indicator active";
-            } else if (data.score >= 45) {
+            } else if (score >= 45) {
                 qualityIndicator.className = "status-indicator warning";
             } else {
                 qualityIndicator.className = "status-indicator error";
             }
 
             if (data.breakdown) {
-                document.getElementById("bar-seg-face").style.width = data.breakdown.facePresence + "%";
-                document.getElementById("bar-seg-head").style.width = data.breakdown.headPoseStability + "%";
-                document.getElementById("bar-seg-eye").style.width = data.breakdown.eyeState + "%";
-                document.getElementById("bar-seg-gaze").style.width = data.breakdown.gazeStability + "%";
+                const face = data.breakdown.facePresence !== undefined ? data.breakdown.facePresence : (data.breakdown.face || 30);
+                const head = data.breakdown.headPoseStability !== undefined ? data.breakdown.headPoseStability : (data.breakdown.head || 35);
+                const eye = data.breakdown.eyeState !== undefined ? data.breakdown.eyeState : (data.breakdown.eye || 15);
+                const gaze = data.breakdown.gazeStability !== undefined ? data.breakdown.gazeStability : (data.breakdown.gaze || 10);
+
+                document.getElementById("bar-seg-face").style.width = face + "%";
+                document.getElementById("bar-seg-head").style.width = head + "%";
+                document.getElementById("bar-seg-eye").style.width = eye + "%";
+                document.getElementById("bar-seg-gaze").style.width = gaze + "%";
 
                 document.getElementById("metric-quality-breakdown").textContent =
-                    data.breakdown.facePresence + "/" +
-                    data.breakdown.headPoseStability + "/" +
-                    data.breakdown.eyeState + "/" +
-                    data.breakdown.gazeStability;
+                    face + "/" + head + "/" + eye + "/" + gaze;
             }
         });
 
@@ -650,11 +1036,10 @@
         ReadingIntelligence.on("onAdaptationRecommendation", function (data) {
             appendToLog(
                 "ADAPT [" + data.state + "] " + data.action +
-                " — " + data.reason.join(", ") +
                 " (score: " + data.difficulty + ")",
                 "warn"
             );
-            console.log("[ReadingIntelligence] Adaptation:", data);
+            applyAdaptation(data.state, data.action);
         });
 
         ReadingIntelligence.on("onFixationDetected", function (data) {
@@ -722,24 +1107,32 @@
         }
 
         function renderTextToContainer(paragraphsArray) {
+            currentParagraphsList = paragraphsArray || [];
             const container = document.getElementById("text-container");
             container.innerHTML = "";
 
             let totalWords = 0;
-            let lineWordEstimates = [];
 
             for (let i = 0; i < paragraphsArray.length; i++) {
-                const text = paragraphsArray[i].trim();
-                if (!text) continue;
+                const rawParagraphText = paragraphsArray[i].trim();
+                if (!rawParagraphText) continue;
 
                 const p = document.createElement("p");
-                p.className = "paragraph";
+                p.className = "paragraph focus-active";
                 p.id = "paragraph-" + i;
-                p.textContent = text;
-                container.appendChild(p);
+                p.dataset.paragraphIndex = i;
 
-                const words = text.split(/\s+/).filter(Boolean).length;
-                totalWords += words;
+                const words = rawParagraphText.split(/\s+/).filter(Boolean);
+                let paragraphHtml = "";
+
+                for (let w = 0; w < words.length; w++) {
+                    const rawWord = words[w];
+                    paragraphHtml += '<span class="reader-word" data-word="' + escapeHtml(rawWord) + '">' + formatWordText(rawWord) + '</span> ';
+                    totalWords++;
+                }
+
+                p.innerHTML = paragraphHtml;
+                container.appendChild(p);
             }
 
             const statsLabel = document.getElementById("doc-stats-label");
@@ -752,21 +1145,44 @@
             appendToLog("DOCUMENT LOADED: " + totalWords + " words in " + paragraphsArray.length + " paragraphs", "event");
         }
 
-        function handleDocumentUpload(event) {
+        async function handleDocumentUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
 
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                const content = e.target.result;
-                const rawParagraphs = content.split(/\n\s*\n/).filter(function (p) { return p.trim().length > 0; });
-                if (rawParagraphs.length > 0) {
-                    renderTextToContainer(rawParagraphs);
-                } else {
-                    renderTextToContainer([content]);
+            appendToLog("Uploading " + file.name + " to backend…", "event");
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                const response = await fetch("http://localhost:8000/api/upload", {
+                    method: "POST",
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    appendToLog("Upload failed: " + (errorData.error || "Unknown error"), "error");
+                    return;
                 }
-            };
-            reader.readAsText(file);
+
+                const data = await response.json();
+                renderTextToContainer(data.paragraphs);
+                appendToLog("Uploaded: " + data.filename + " (" + data.wordCount + " words)", "event");
+                showAdaptBadge("📁 Loaded: " + data.filename, "#10b981");
+            } catch (networkError) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const rawContent = e.target.result;
+                    const paragraphs = rawContent.split(/\n\s*\n/).filter(function (p) {
+                        return p.trim().length > 20;
+                    });
+                    renderTextToContainer(paragraphs.length > 0 ? paragraphs : [rawContent]);
+                };
+                reader.readAsText(file);
+                appendToLog("Backend offline — read file locally", "warn");
+                showAdaptBadge("📁 Loaded locally: " + file.name, "#f59e0b");
+            }
         }
 
         const DEMO_STORIES = {
@@ -792,9 +1208,12 @@
         }
 
         function triggerProactiveAssistAction() {
+            showAIPanel();
             const metrics = ReadingIntelligence.getCurrentMetrics();
             const targetLine = metrics.currentLine >= 0 ? metrics.currentLine : 0;
-            ReadingIntelligence.triggerProactiveAssist(targetLine, "OFFER_SIMPLIFICATION");
+            if (ReadingIntelligence.triggerProactiveAssist) {
+                ReadingIntelligence.triggerProactiveAssist(targetLine, "OFFER_SIMPLIFICATION");
+            }
             appendToLog("PROACTIVE ASSIST manually triggered for line " + targetLine, "warn");
         }
 
@@ -823,8 +1242,18 @@
         window.toggleRawCursor = toggleRawCursor;
         window.handleWindowChange = handleWindowChange;
         window.logCurrentProfile = logCurrentProfile;
+        window.simulateDifficulty = simulateDifficulty;
+        window.resetTextAdaptation = resetTextAdaptation;
+        window.callAIAssist = callAIAssist;
+        window.callTTS = callTTS;
+        window.showAIPanel = showAIPanel;
+        window.hideAIPanel = hideAIPanel;
+        window.toggleBionicMode = toggleBionicMode;
+        window.cycleVisualTint = cycleVisualTint;
 
         async function bootSystem() {
+            createReadingRuler();
+            loadDemoPassage("default");
             loadingStatusText.textContent = "Requesting webcam access…";
             loadingSpinner.style.display = "block";
             loadingErrorActions.style.display = "none";
@@ -853,6 +1282,10 @@
                 appendToLog("INIT ERROR: " + friendlyMsg, "error");
             }
         }
+
+        window.addEventListener("resize", function () {
+            AdaptiveReaderCV.refreshTextRegion();
+        });
 
         document.addEventListener("DOMContentLoaded", function () {
             bootSystem();
