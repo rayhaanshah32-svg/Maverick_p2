@@ -477,11 +477,21 @@ const DOMMapper = (function () {
         });
     }
 
+    function getLineBoundingBoxes() {
+        return lineBoundingBoxes;
+    }
+
+    function getParagraphBoundingBoxes() {
+        return paragraphBoundingBoxes;
+    }
+
     return {
         setTextContainer: setTextContainer,
         rebuildBoundingBoxCache: debouncedRebuild,
         findLineAtPoint: findLineAtPoint,
         findLineAtCoordinates: findLineAtCoordinates,
+        getLineBoundingBoxes: getLineBoundingBoxes,
+        getParagraphBoundingBoxes: getParagraphBoundingBoxes,
         toggleDebugOverlay: toggleDebugOverlay,
         refreshOnResize: refreshOnResize
     };

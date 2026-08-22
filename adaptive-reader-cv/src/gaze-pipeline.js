@@ -13,10 +13,23 @@ const GazePipeline = (function () {
 
     let comparisonLogCounter = 0;
 
+    let emaX = null;
+    let emaY = null;
+    const EMA_ALPHA = 0.35;
+
     function addRawSample(x, y, confidence, timestamp) {
         latestRawPoint = { x: x, y: y };
-        lastKnownGoodPoint = { x: x, y: y };
-        rawSampleBuffer.push({ x: x, y: y, confidence: confidence, timestamp: timestamp });
+
+        if (emaX === null || !Number.isFinite(emaX)) {
+            emaX = x;
+            emaY = y;
+        } else {
+            emaX = EMA_ALPHA * x + (1 - EMA_ALPHA) * emaX;
+            emaY = EMA_ALPHA * y + (1 - EMA_ALPHA) * emaY;
+        }
+
+        lastKnownGoodPoint = { x: emaX, y: emaY };
+        rawSampleBuffer.push({ x: emaX, y: emaY, confidence: confidence, timestamp: timestamp });
 
         const cutoffTime = timestamp - smoothingWindowMs;
         rawSampleBuffer = rawSampleBuffer.filter(function (sample) {

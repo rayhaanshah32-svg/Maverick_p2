@@ -430,12 +430,13 @@
         let adaptCooldownUntil = 0;
 
         const TeleprompterEngine = {
-            currentLine: 0,
-            baseMsPerLine: 2600,
+            currentWordIndex: 0,
+            baseMsPerWord: 300,
             paceModifier: 1.0,
             isRunning: true,
             isPaused: true,
             lastTickTime: Date.now(),
+            wordProgress: 0,
 
             init() {
                 this.lastTickTime = Date.now();
@@ -448,19 +449,79 @@
                 const elapsed = now - this.lastTickTime;
                 this.lastTickTime = now;
 
-                if (this.isRunning && !this.isPaused && totalLinesCount > 0) {
-                    const effectiveMsPerLine = Math.max(900, this.baseMsPerLine * this.paceModifier);
-                    const lineAdvance = elapsed / effectiveMsPerLine;
-                    this.currentLine = Math.min(totalLinesCount - 1, this.currentLine + lineAdvance);
+                const allWords = textContainer.querySelectorAll(".reader-word");
 
-                    const targetLineIndex = Math.floor(this.currentLine);
-                    updateRulerToLine(targetLineIndex);
-                    updatePrompterWordHighlight(this.currentLine);
-                    updatePacedFocusTunnel(targetLineIndex);
-                    updatePrompterTelemetry();
+                if (this.isRunning && !this.isPaused && allWords.length > 0) {
+                    const effectiveMsPerWord = Math.max(120, this.baseMsPerWord * this.paceModifier);
+                    const wordAdvance = elapsed / effectiveMsPerWord;
+                    this.wordProgress = Math.min(allWords.length - 1, this.wordProgress + wordAdvance);
+                    this.currentWordIndex = Math.floor(this.wordProgress);
+
+                    const activeWord = allWords[this.currentWordIndex];
+                    if (activeWord) {
+                        if (activePrompterWordElement && activePrompterWordElement !== activeWord) {
+                            activePrompterWordElement.classList.remove("prompter-active-word");
+                        }
+                        activeWord.classList.add("prompter-active-word");
+                        activePrompterWordElement = activeWord;
+
+                        const wordRect = activeWord.getBoundingClientRect();
+                        const readingPanelRect = readingPanel.getBoundingClientRect();
+                        const topPosition = wordRect.top - readingPanelRect.top + readingPanel.scrollTop - 4;
+                        const rulerHeight = Math.max(34, wordRect.height + 8);
+
+                        if (readingRuler) {
+                            readingRuler.style.top = topPosition + "px";
+                            readingRuler.style.height = rulerHeight + "px";
+                            readingRuler.style.opacity = "1";
+                        }
+
+                        const bottomOffset = wordRect.bottom - readingPanelRect.top;
+                        const viewHeight = readingPanel.clientHeight;
+                        if (bottomOffset > viewHeight - 90) {
+                            readingPanel.scrollTop += (bottomOffset - (viewHeight - 120)) * 0.14;
+                        } else if (bottomOffset < 80 && readingPanel.scrollTop > 0) {
+                            readingPanel.scrollTop -= (80 - bottomOffset) * 0.14;
+                        }
+
+                        const currentPara = activeWord.closest(".paragraph");
+                        const allParas = textContainer.querySelectorAll(".paragraph");
+                        for (let p = 0; p < allParas.length; p++) {
+                            if (allParas[p] === currentPara) {
+                                allParas[p].classList.add("focus-active");
+                                allParas[p].classList.remove("focus-dimmed");
+                            } else {
+                                if (currentStageState === "HIGH_FRICTION" || currentStageState === "ASSIST") {
+                                    allParas[p].classList.remove("focus-active");
+                                    allParas[p].classList.add("focus-dimmed");
+                                } else {
+                                    allParas[p].classList.add("focus-active");
+                                    allParas[p].classList.remove("focus-dimmed");
+                                }
+                            }
+                        }
+                    }
+
+                    this.updateTelemetry(allWords.length);
                 }
 
                 requestAnimationFrame(this.step.bind(this));
+            },
+
+            updateTelemetry(totalWords) {
+                const lineVal = document.getElementById("guide-line-val");
+                const paceVal = document.getElementById("guide-pace-val");
+
+                if (lineVal) {
+                    lineVal.textContent = "Word " + (this.currentWordIndex + 1) + " / " + totalWords;
+                }
+                if (paceVal) {
+                    const currentWPM = Math.round(60000 / (this.baseMsPerWord * this.paceModifier));
+                    paceVal.textContent = (1 / this.paceModifier).toFixed(2) + "x (" + currentWPM + " WPM)";
+                }
+                if (rulerStatusChip && !this.isPaused) {
+                    rulerStatusChip.textContent = (1 / this.paceModifier).toFixed(2) + "x";
+                }
             },
 
             pause(reason) {
@@ -494,34 +555,21 @@
                 }
             },
 
-            rewindToLine(lineIndex, reason) {
-                this.currentLine = Math.max(0, Math.min(totalLinesCount - 1, lineIndex));
+            rewindToWord(wordIndex, reason) {
+                const allWords = textContainer.querySelectorAll(".reader-word");
+                this.wordProgress = Math.max(0, Math.min(allWords.length - 1, wordIndex));
+                this.currentWordIndex = Math.floor(this.wordProgress);
                 this.pause(reason || "⏸ Rewind & Focus");
 
-                updateRulerToLine(lineIndex);
-
-                const wordLineMap = buildWordLineMap();
-                const wordsOnLine = wordLineMap.filter(function (entry) {
-                    return entry.lineNumber === lineIndex;
-                });
-
-                let targetWord = null;
-                if (wordsOnLine.length > 0) {
-                    targetWord = wordsOnLine[0].element;
-                } else if (wordLineMap.length > 0) {
-                    targetWord = wordLineMap[Math.min(wordLineMap.length - 1, lineIndex * 8)].element;
-                }
-
-                const allWords = textContainer.querySelectorAll(".reader-word");
                 for (let w = 0; w < allWords.length; w++) {
                     allWords[w].classList.remove("struggle-rewind-word");
                 }
 
-                if (targetWord) {
-                    targetWord.classList.add("struggle-rewind-word");
+                if (allWords[this.currentWordIndex]) {
+                    allWords[this.currentWordIndex].classList.add("struggle-rewind-word");
                     setTimeout(function () {
-                        if (targetWord) {
-                            targetWord.classList.remove("struggle-rewind-word");
+                        if (allWords[TeleprompterEngine.currentWordIndex]) {
+                            allWords[TeleprompterEngine.currentWordIndex].classList.remove("struggle-rewind-word");
                         }
                     }, 2500);
                 }
@@ -548,16 +596,36 @@
             }
         }
 
+        function getTotalDocumentLines() {
+            const lineBoxes = DOMMapper.getLineBoundingBoxes ? DOMMapper.getLineBoundingBoxes() : [];
+            if (lineBoxes.length > 0) {
+                return lineBoxes.length;
+            }
+            const wordLineMap = buildWordLineMap();
+            if (wordLineMap.length > 0) {
+                let maxLine = 0;
+                for (let i = 0; i < wordLineMap.length; i++) {
+                    if (wordLineMap[i].lineNumber > maxLine) {
+                        maxLine = wordLineMap[i].lineNumber;
+                    }
+                }
+                return maxLine + 1;
+            }
+            return 20;
+        }
+
         function updateRulerToLine(lineIndex) {
             if (!readingRuler) return;
             const lineBoxes = DOMMapper.getLineBoundingBoxes ? DOMMapper.getLineBoundingBoxes() : [];
             let targetBox = lineBoxes[lineIndex];
 
             if (!targetBox) {
-                const allWords = textContainer.querySelectorAll(".reader-word");
-                const targetWord = allWords[Math.min(allWords.length - 1, lineIndex * 10)];
-                if (targetWord) {
-                    const rect = targetWord.getBoundingClientRect();
+                const wordLineMap = buildWordLineMap();
+                const wordsOnLine = wordLineMap.filter(function (entry) {
+                    return entry.lineNumber === lineIndex;
+                });
+                if (wordsOnLine.length > 0) {
+                    const rect = wordsOnLine[0].element.getBoundingClientRect();
                     targetBox = { lineRect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right } };
                 }
             }
@@ -569,6 +637,14 @@
                 readingRuler.style.top = topPosition + "px";
                 readingRuler.style.height = rulerHeight + "px";
                 readingRuler.style.opacity = "1";
+
+                const rulerBottomInView = targetBox.lineRect.bottom - readingPanelRect.top;
+                const viewHeight = readingPanel.clientHeight;
+                if (rulerBottomInView > viewHeight - 90) {
+                    readingPanel.scrollTop += (rulerBottomInView - (viewHeight - 120)) * 0.15;
+                } else if (rulerBottomInView < 90 && readingPanel.scrollTop > 0) {
+                    readingPanel.scrollTop -= (90 - rulerBottomInView) * 0.15;
+                }
             }
         }
 
@@ -637,8 +713,8 @@
         }
 
         function updatePacedFocusTunnel(activeLineIndex) {
+            totalLinesCount = getTotalDocumentLines();
             const lineBoxes = DOMMapper.getLineBoundingBoxes ? DOMMapper.getLineBoundingBoxes() : [];
-            totalLinesCount = Math.max(4, lineBoxes.length);
 
             const allParas = textContainer.querySelectorAll(".paragraph");
             if (allParas.length === 0) return;
@@ -666,8 +742,8 @@
             }
         }
 
-        let lineStallStartTime = null;
-        let lastObservedGazeLine = -1;
+        let wordStallStartTime = null;
+        let lastObservedGazeWordIndex = -1;
 
         function recordGazeLineSample(lineIndex) {
             if (lineIndex >= 0) {
@@ -679,76 +755,74 @@
             }
         }
 
-        function getAverageGazeLine() {
-            if (gazeLineHistory.length === 0) return TeleprompterEngine.currentLine;
-            let sum = 0;
-            for (let i = 0; i < gazeLineHistory.length; i++) {
-                sum += gazeLineHistory[i].line;
+        function getGazeWordIndexFromLine(lineIndex) {
+            const wordLineMap = buildWordLineMap();
+            const wordsOnLine = wordLineMap.filter(function (entry) {
+                return entry.lineNumber === lineIndex;
+            });
+            if (wordsOnLine.length > 0) {
+                const allWords = Array.from(textContainer.querySelectorAll(".reader-word"));
+                return allWords.indexOf(wordsOnLine[0].element);
             }
-            return sum / gazeLineHistory.length;
+            return -1;
         }
 
         function updatePaceModifierFromGaze() {
             const now = Date.now();
-            if (now - lastPaceCheckTime < 1000) return;
+            if (now - lastPaceCheckTime < 1200) return;
             lastPaceCheckTime = now;
 
             if (gazeLineHistory.length < 4) return;
 
-            const gazeLineAvg = getAverageGazeLine();
-            const prompterLine = TeleprompterEngine.currentLine;
-            const diff = gazeLineAvg - prompterLine;
+            let sum = 0;
+            for (let i = 0; i < gazeLineHistory.length; i++) {
+                sum += gazeLineHistory[i].line;
+            }
+            const avgGazeLine = Math.round(sum / gazeLineHistory.length);
+
+            const gazeWordIndex = getGazeWordIndexFromLine(avgGazeLine);
+            const prompterWordIndex = TeleprompterEngine.currentWordIndex;
+
+            if (gazeWordIndex < 0) return;
+
+            const diff = gazeWordIndex - prompterWordIndex;
+            const allWords = textContainer.querySelectorAll(".reader-word");
+            const approxWordsPerLine = 9;
 
             const syncEl = document.getElementById("guide-sync-val");
             if (syncEl) {
-                if (diff > 1.8) {
-                    syncEl.textContent = "Ahead (+" + diff.toFixed(1) + ")";
-                } else if (diff < -1.8) {
-                    syncEl.textContent = "Behind (" + diff.toFixed(1) + ")";
+                const lineDiff = diff / approxWordsPerLine;
+                if (lineDiff > 1.5) {
+                    syncEl.textContent = "Ahead (+" + lineDiff.toFixed(1) + " lines)";
+                } else if (lineDiff < -1.5) {
+                    syncEl.textContent = "Behind (" + lineDiff.toFixed(1) + " lines)";
                 } else {
-                    syncEl.textContent = "In Sync (" + (diff >= 0 ? "+" : "") + diff.toFixed(1) + ")";
+                    syncEl.textContent = "In Sync";
                 }
             }
 
-            const currentGazeLineRounded = Math.round(gazeLineAvg);
-            if (currentGazeLineRounded === lastObservedGazeLine) {
-                if (!lineStallStartTime) {
-                    lineStallStartTime = now;
-                } else if (now - lineStallStartTime > 4500) {
+            if (avgGazeLine === lastObservedGazeWordIndex) {
+                if (!wordStallStartTime) {
+                    wordStallStartTime = now;
+                } else if (now - wordStallStartTime > 4500) {
                     applyAdaptation("MILD_FRICTION", "LIGHT_SPACING");
                 }
             } else {
-                lastObservedGazeLine = currentGazeLineRounded;
-                lineStallStartTime = now;
+                lastObservedGazeWordIndex = avgGazeLine;
+                wordStallStartTime = now;
             }
 
-            if (diff > 2.0) {
-                TeleprompterEngine.paceModifier = 0.90;
+            if (diff > approxWordsPerLine * 2) {
+                TeleprompterEngine.paceModifier = 0.88;
                 if (TeleprompterEngine.isPaused) TeleprompterEngine.resume();
-            } else if (diff >= -1.0) {
+            } else if (diff >= -approxWordsPerLine) {
                 TeleprompterEngine.paceModifier = 1.00;
                 if (TeleprompterEngine.isPaused) TeleprompterEngine.resume();
-            } else if (diff >= -2.5) {
+            } else if (diff >= -approxWordsPerLine * 2) {
                 TeleprompterEngine.paceModifier = 1.18;
                 if (TeleprompterEngine.isPaused) TeleprompterEngine.resume();
             } else {
                 TeleprompterEngine.paceModifier = 1.35;
-            }
-        }
-
-        function updatePrompterTelemetry() {
-            const lineVal = document.getElementById("guide-line-val");
-            const paceVal = document.getElementById("guide-pace-val");
-
-            if (lineVal) {
-                lineVal.textContent = "Line " + Math.floor(TeleprompterEngine.currentLine) + " / " + Math.max(1, totalLinesCount);
-            }
-            if (paceVal) {
-                const secPerLine = ((TeleprompterEngine.baseMsPerLine * TeleprompterEngine.paceModifier) / 1000).toFixed(1);
-                paceVal.textContent = (1 / TeleprompterEngine.paceModifier).toFixed(2) + "x (" + secPerLine + "s/line)";
-            }
-            if (rulerStatusChip && !TeleprompterEngine.isPaused) {
-                rulerStatusChip.textContent = (1 / TeleprompterEngine.paceModifier).toFixed(2) + "x";
             }
         }
 
@@ -991,9 +1065,119 @@
             }
 
             adaptCooldownUntil = 0;
+            clearAllStruggleHighlights();
             AdaptiveReaderCV.refreshTextRegion();
             showAdaptBadge("↺ Text formatting reset to normal", "#10b981");
             appendToLog("RESET: Text formatting reset", "event");
+        }
+
+        let activeStruggleWord = null;
+        let wordStruggleStartTime = 0;
+        let wordStruggleSpoken = false;
+
+        function findWordElementAtCoordinates(x, y) {
+            const allWords = textContainer.querySelectorAll(".reader-word");
+            if (allWords.length === 0) return null;
+
+            let closestWord = null;
+            let minDistance = Infinity;
+
+            for (let i = 0; i < allWords.length; i++) {
+                const rect = allWords[i].getBoundingClientRect();
+                if (x >= rect.left - 10 && x <= rect.right + 10 && y >= rect.top - 8 && y <= rect.bottom + 8) {
+                    return allWords[i];
+                }
+                const centerX = (rect.left + rect.right) / 2;
+                const centerY = (rect.top + rect.bottom) / 2;
+                const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestWord = allWords[i];
+                }
+            }
+
+            if (minDistance < 65) {
+                return closestWord;
+            }
+            return null;
+        }
+
+        function clearAllStruggleHighlights() {
+            const words = textContainer.querySelectorAll(".reader-word");
+            for (let i = 0; i < words.length; i++) {
+                words[i].classList.remove("struggle-enlarged-word");
+                words[i].classList.remove("struggle-speaking-word");
+            }
+        }
+
+        function speakSingleWord(rawWord) {
+            const cleanWord = rawWord.replace(/[^\w\s]/gi, "").trim();
+            if (!cleanWord) return;
+
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(cleanWord);
+            utterance.rate = 0.85;
+            utterance.pitch = 1.0;
+
+            utterance.onend = function () {
+                setTimeout(function () {
+                    clearAllStruggleHighlights();
+                    if (TeleprompterEngine.isPaused) {
+                        TeleprompterEngine.resume();
+                    }
+                }, 1200);
+            };
+
+            utterance.onerror = function () {
+                clearAllStruggleHighlights();
+                if (TeleprompterEngine.isPaused) {
+                    TeleprompterEngine.resume();
+                }
+            };
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function handleWordLevelStruggle(gazeX, gazeY, lineIndex) {
+            if (lineIndex < 0) return;
+
+            const wordElement = findWordElementAtCoordinates(gazeX, gazeY);
+            const now = Date.now();
+
+            if (!wordElement) {
+                return;
+            }
+
+            if (activeStruggleWord === wordElement) {
+                const struggleDuration = now - wordStruggleStartTime;
+
+                if (struggleDuration >= 2400 && !wordElement.classList.contains("struggle-enlarged-word") && !wordStruggleSpoken) {
+                    clearAllStruggleHighlights();
+                    wordElement.classList.add("struggle-enlarged-word");
+                    TeleprompterEngine.pause("Focus on word");
+                    showAdaptBadge("🔍 Word enlarged: " + wordElement.textContent.trim(), "#f59e0b");
+                    appendToLog("WORD STRUGGLE: enlarged \"" + wordElement.textContent.trim() + "\"", "warn");
+                }
+
+                if (struggleDuration >= 4600 && !wordStruggleSpoken) {
+                    wordStruggleSpoken = true;
+                    wordElement.classList.remove("struggle-enlarged-word");
+                    wordElement.classList.add("struggle-speaking-word");
+                    speakSingleWord(wordElement.textContent.trim());
+                    showAdaptBadge("🔊 Reading word: " + wordElement.textContent.trim(), "#7986cb");
+                    appendToLog("WORD STRUGGLE: reading aloud \"" + wordElement.textContent.trim() + "\"", "warn");
+                }
+            } else {
+                if (activeStruggleWord && (now - wordStruggleStartTime > 1800)) {
+                    clearAllStruggleHighlights();
+                    if (TeleprompterEngine.isPaused) {
+                        TeleprompterEngine.resume();
+                    }
+                }
+                activeStruggleWord = wordElement;
+                wordStruggleStartTime = now;
+                wordStruggleSpoken = false;
+            }
         }
 
         function simulateDifficulty() {
@@ -1001,23 +1185,41 @@
             adaptationApplied = { spacing: false, font: false, high: false };
             adaptCooldownUntil = 0;
 
+            const allWords = textContainer.querySelectorAll(".reader-word");
+            const demoWord = allWords.length > 10 ? allWords[10] : allWords[0];
+
             setTimeout(function () {
                 applyAdaptation("MILD_FRICTION", "LIGHT_SPACING");
-            }, 500);
+                if (demoWord) {
+                    clearAllStruggleHighlights();
+                    demoWord.classList.add("struggle-enlarged-word");
+                    TeleprompterEngine.pause("Focus on word");
+                    showAdaptBadge("🔍 Word enlarged: " + demoWord.textContent.trim(), "#f59e0b");
+                    appendToLog("DEMO: Word enlarged on struggle", "warn");
+                }
+            }, 800);
+
+            setTimeout(function () {
+                if (demoWord) {
+                    demoWord.classList.remove("struggle-enlarged-word");
+                    demoWord.classList.add("struggle-speaking-word");
+                    speakSingleWord(demoWord.textContent.trim());
+                    showAdaptBadge("🔊 Reading word: " + demoWord.textContent.trim(), "#7986cb");
+                    appendToLog("DEMO: Reading difficult word aloud", "warn");
+                }
+            }, 3200);
 
             setTimeout(function () {
                 applyAdaptation("HIGH_FRICTION", "FOCUS_LINE");
-                TeleprompterEngine.rewindToLine(1, "Struggle Rewind");
-            }, 3500);
+            }, 5500);
 
             setTimeout(function () {
                 applyAdaptation("ASSIST", "OFFER_SIMPLIFICATION");
-                TeleprompterEngine.pause("AI Assist Ready");
                 showAIPanel();
                 setTimeout(function () {
                     callAIAssist("simplify");
                 }, 800);
-            }, 7000);
+            }, 8000);
         }
 
         function appendToLog(message, type) {
@@ -1103,6 +1305,7 @@
             if (data.lineIndex !== undefined && data.lineIndex >= 0) {
                 recordGazeLineSample(data.lineIndex);
                 updatePaceModifierFromGaze();
+                handleWordLevelStruggle(data.x, data.y, data.lineIndex);
             }
 
             let aoiText = "Outside text";
@@ -1189,23 +1392,26 @@
         });
 
         EventAPI.on("onBaselineComplete", function (data) {
-            const pacePerLineSec = ((data.baselineMsPerLine || 2600) / 1000).toFixed(1);
-            document.getElementById("metric-wpm").textContent = pacePerLineSec + "s / line (" + data.baselineWPM + " WPM)";
-            document.getElementById("metric-fixation").textContent = data.baselineFixationMs + " ms";
-            document.getElementById("metric-blink-rate").textContent = data.baselineBlinkRate + " / min";
+            const baselineWPM = data.baselineWPM || 120;
+            const msPerWord = Math.round(60000 / baselineWPM);
 
-            TeleprompterEngine.baseMsPerLine = data.baselineMsPerLine || 2600;
-            TeleprompterEngine.currentLine = 0;
+            document.getElementById("metric-wpm").textContent = baselineWPM + " WPM (" + msPerWord + "ms/word)";
+            document.getElementById("metric-fixation").textContent = (data.baselineFixationMs || 240) + " ms";
+            document.getElementById("metric-blink-rate").textContent = (data.baselineBlinkRate || 15) + " / min";
+
+            TeleprompterEngine.baseMsPerWord = msPerWord;
+            TeleprompterEngine.wordProgress = 0;
+            TeleprompterEngine.currentWordIndex = 0;
             TeleprompterEngine.paceModifier = 1.0;
             TeleprompterEngine.resume();
 
             appendToLog(
-                "BASELINE SET — " + pacePerLineSec + "s per line (" + data.baselineWPM + " WPM). Teleprompter active!",
+                "BASELINE SET — " + baselineWPM + " WPM → " + msPerWord + "ms per word. Teleprompter active!",
                 "event"
             );
             document.getElementById("btn-start-baseline").textContent = "✓ Baseline Active";
 
-            showAdaptBadge("🎯 Personalized Reading Speed: " + pacePerLineSec + "s/line", "#10b981");
+            showAdaptBadge("🎯 Your reading speed: " + baselineWPM + " WPM", "#10b981");
 
             ReadingIntelligence.start();
             appendToLog("READING INTELLIGENCE started", "event");
@@ -1399,7 +1605,8 @@
                 statsLabel.textContent = totalWords + " words | " + paragraphsArray.length + " paragraphs";
             }
 
-            TeleprompterEngine.currentLine = 0;
+            TeleprompterEngine.wordProgress = 0;
+            TeleprompterEngine.currentWordIndex = 0;
             TeleprompterEngine.resume();
 
             AdaptiveReaderCV.refreshTextRegion();

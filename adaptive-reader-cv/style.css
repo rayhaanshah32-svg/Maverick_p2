@@ -239,26 +239,61 @@ html, body {
 }
 
 .reader-word {
-    display: inline;
-    border-radius: 3px;
-    padding: 0 2px;
-    transition: color 250ms ease, background-color 250ms ease, font-weight 250ms ease;
+    display: inline-block;
+    border-radius: 4px;
+    padding: 1px 3px;
+    margin: 0 1px;
+    transition: color 250ms ease, background-color 250ms ease, font-weight 250ms ease, transform 250ms ease, box-shadow 250ms ease;
     cursor: default;
 }
 
 .reader-word.prompter-active-word {
     color: #ffffff !important;
     font-weight: 700 !important;
-    background: rgba(95, 168, 211, 0.22);
-    border-radius: 3px;
+    background: rgba(95, 168, 211, 0.28) !important;
+    box-shadow: 0 0 12px rgba(95, 168, 211, 0.4);
+    border-radius: 4px;
+    transform: scale(1.06);
 }
 
-.reader-word.struggle-rewind-word {
+.reader-word.struggle-enlarged-word {
+    display: inline-block;
+    font-size: 1.35em !important;
+    font-weight: 800 !important;
     color: #fef08a !important;
-    font-weight: 700 !important;
-    background: rgba(245, 158, 11, 0.25) !important;
-    border-bottom: 2px solid #f59e0b;
-    border-radius: 3px;
+    background: rgba(245, 158, 11, 0.38) !important;
+    border: 1px solid rgba(245, 158, 11, 0.7);
+    border-radius: 6px;
+    padding: 2px 8px !important;
+    margin: 0 4px;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.6);
+    transform: translateY(-2px);
+    transition: all 300ms ease;
+    z-index: 10;
+    position: relative;
+}
+
+.reader-word.struggle-speaking-word {
+    display: inline-block;
+    font-size: 1.35em !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+    background: rgba(92, 107, 192, 0.6) !important;
+    border: 1px solid #7986cb;
+    border-radius: 6px;
+    padding: 2px 8px !important;
+    margin: 0 4px;
+    box-shadow: 0 0 24px rgba(121, 134, 203, 0.8);
+    transform: translateY(-2px);
+    transition: all 300ms ease;
+    z-index: 10;
+    position: relative;
+    animation: struggle-speak-pulse 1.2s infinite;
+}
+
+@keyframes struggle-speak-pulse {
+    0%, 100% { transform: translateY(-2px) scale(1); }
+    50% { transform: translateY(-2px) scale(1.08); }
 }
 
 .reader-word.speaking-active-word {
