@@ -1,12 +1,13 @@
 const BaselineCapture = (function () {
 
-    const BASELINE_MAX_DURATION_MS = 35000;
+    const BASELINE_MAX_DURATION_MS = 45000;
     const FIXATION_THRESHOLD_PX = 38;
     const FIXATION_MIN_DURATION_MS = 80;
     const BLINK_SAMPLE_INTERVAL_MS = 150;
-    const PASSAGE_TOTAL_WORDS = 95;
+    const PASSAGE_TOTAL_WORDS = 62;
+    const PASSAGE_TOTAL_LINES = 5;
 
-    const MIN_SAFE_WPM = 90;
+    const MIN_SAFE_WPM = 80;
     const MAX_SAFE_WPM = 420;
     const MIN_SAFE_FIXATION_MS = 130;
     const MAX_SAFE_FIXATION_MS = 550;
@@ -34,7 +35,7 @@ const BaselineCapture = (function () {
         overlayElement.style.position = "fixed";
         overlayElement.style.inset = "0";
         overlayElement.style.backgroundColor = "rgba(7, 8, 16, 0.94)";
-        overlayElement.style.backdropFilter = "blur(10px)";
+        overlayElement.style.backdropFilter = "blur(12px)";
         overlayElement.style.zIndex = "99990";
         overlayElement.style.display = "flex";
         overlayElement.style.flexDirection = "column";
@@ -45,16 +46,16 @@ const BaselineCapture = (function () {
         overlayElement.style.fontFamily = "'Inter', 'Segoe UI', sans-serif";
 
         const card = document.createElement("div");
-        card.style.maxWidth = "720px";
+        card.style.maxWidth = "700px";
         card.style.width = "100%";
         card.style.backgroundColor = "#13152a";
-        card.style.border = "1px solid rgba(92, 107, 192, 0.4)";
+        card.style.border = "1px solid rgba(92, 107, 192, 0.45)";
         card.style.borderRadius = "14px";
         card.style.padding = "28px 36px";
         card.style.boxShadow = "0 12px 40px rgba(0, 0, 0, 0.6)";
         card.style.display = "flex";
         card.style.flexDirection = "column";
-        card.style.gap = "18px";
+        card.style.gap = "16px";
 
         const headerRow = document.createElement("div");
         headerRow.style.display = "flex";
@@ -62,14 +63,14 @@ const BaselineCapture = (function () {
         headerRow.style.justifyContent = "space-between";
 
         const title = document.createElement("h2");
-        title.textContent = "Personal Reading Baseline";
+        title.textContent = "Step 2: Personal Reading Baseline";
         title.style.color = "#f0f2ff";
-        title.style.fontSize = "20px";
+        title.style.fontSize = "19px";
         title.style.margin = "0";
         headerRow.appendChild(title);
 
         timerLabelElement = document.createElement("div");
-        timerLabelElement.textContent = "35s remaining";
+        timerLabelElement.textContent = "45s remaining";
         timerLabelElement.style.fontSize = "13px";
         timerLabelElement.style.fontWeight = "600";
         timerLabelElement.style.color = "#7986cb";
@@ -78,20 +79,12 @@ const BaselineCapture = (function () {
         card.appendChild(headerRow);
 
         const instructions = document.createElement("p");
-        instructions.textContent = "Read the passage below naturally at your own comfortable pace. We are measuring your personal baseline speed, fixations, and blink rate.";
+        instructions.textContent = "Read the short paragraph below at your natural, comfortable pace. When you reach the end, click 'Finished Reading' so we can set your personalized teleprompter speed.";
         instructions.style.color = "#9fa3c0";
         instructions.style.fontSize = "13px";
         instructions.style.lineHeight = "1.5";
         instructions.style.margin = "0";
         card.appendChild(instructions);
-
-        statusLabelElement = document.createElement("p");
-        statusLabelElement.style.color = "#e8a33d";
-        statusLabelElement.style.fontSize = "12px";
-        statusLabelElement.style.lineHeight = "1.5";
-        statusLabelElement.style.margin = "-8px 0 0";
-        statusLabelElement.textContent = "Waiting for valid gaze samples…";
-        card.appendChild(statusLabelElement);
 
         const track = document.createElement("div");
         track.style.height = "6px";
@@ -108,15 +101,16 @@ const BaselineCapture = (function () {
         card.appendChild(track);
 
         const passageBox = document.createElement("div");
+        passageBox.id = "baseline-passage-box";
         passageBox.style.fontFamily = "'Lexend', 'Inter', sans-serif";
-        passageBox.style.fontSize = "18px";
+        passageBox.style.fontSize = "19px";
         passageBox.style.lineHeight = "1.9";
         passageBox.style.color = "#e8eaf0";
         passageBox.style.backgroundColor = "#0d0e1a";
-        passageBox.style.padding = "20px";
+        passageBox.style.padding = "22px";
         passageBox.style.borderRadius = "8px";
         passageBox.style.border = "1px solid #2a2d4a";
-        passageBox.textContent = "Language and reading rely on rapid, unconscious synchronization between visual perception and memory. When readers encounter words, their eyes perform quick jumps called saccades, followed by brief pauses called fixations. Measuring these natural eye movements allows adaptive software to tailor the text presentation to each person's unique cognitive profile without interrupting their flow.";
+        passageBox.textContent = "Reading is a natural partnership between your visual perception and working memory. When you read comfortably, your eyes move in steady forward steps called saccades. By measuring your unique pace on this passage, our AI teleprompter sets a smooth, comfortable guide that moves with you without causing any eye fatigue or jitter.";
         card.appendChild(passageBox);
 
         const buttonRow = document.createElement("div");
@@ -126,7 +120,7 @@ const BaselineCapture = (function () {
         buttonRow.style.marginTop = "8px";
 
         const skipBtn = document.createElement("button");
-        skipBtn.textContent = "⚡ Fast Skip (Dev Default)";
+        skipBtn.textContent = "⚡ Fast Skip (Default 2.5s/line)";
         skipBtn.style.padding = "8px 14px";
         skipBtn.style.fontSize = "12px";
         skipBtn.style.backgroundColor = "transparent";
@@ -141,8 +135,8 @@ const BaselineCapture = (function () {
 
         const doneBtn = document.createElement("button");
         doneBtn.textContent = "✓ Finished Reading";
-        doneBtn.style.padding = "9px 20px";
-        doneBtn.style.fontSize = "13px";
+        doneBtn.style.padding = "10px 24px";
+        doneBtn.style.fontSize = "14px";
         doneBtn.style.fontWeight = "600";
         doneBtn.style.backgroundColor = "#10b981";
         doneBtn.style.color = "#ffffff";
@@ -181,7 +175,6 @@ const BaselineCapture = (function () {
         lastBlinkState = false;
 
         createBaselineModal();
-        console.log("[BaselineCapture] Started guided baseline reading session…");
 
         gazeUpdateListener = function (gazeData) {
             if (isRunning && gazeData && Number.isFinite(gazeData.x) && Number.isFinite(gazeData.y)) {
@@ -277,11 +270,15 @@ const BaselineCapture = (function () {
         removeBaselineModal();
         statusLabelElement = null;
 
-        const durationSeconds = startTime ? Math.max(5, (Date.now() - startTime) / 1000) : 25;
+        const totalElapsedMs = startTime ? Math.max(3000, Date.now() - startTime) : 15000;
+        const durationSeconds = totalElapsedMs / 1000;
         const durationMinutes = durationSeconds / 60;
 
         let rawWPM = Math.round(PASSAGE_TOTAL_WORDS / durationMinutes);
-        let baselineWPM = Math.max(MIN_SAFE_WPM, Math.min(MAX_SAFE_WPM, rawWPM || 220));
+        let baselineWPM = Math.max(MIN_SAFE_WPM, Math.min(MAX_SAFE_WPM, rawWPM || 200));
+
+        let baselineMsPerLine = Math.round(totalElapsedMs / PASSAGE_TOTAL_LINES);
+        baselineMsPerLine = Math.max(1400, Math.min(5000, baselineMsPerLine));
 
         const fixations = computeFixations(collectedSamples);
         let rawAvgFixation = 240;
@@ -306,6 +303,7 @@ const BaselineCapture = (function () {
 
         const baselinePayload = {
             baselineWPM: baselineWPM,
+            baselineMsPerLine: baselineMsPerLine,
             baselineFixationMs: baselineFixationMs,
             baselineBlinkRate: baselineBlinkRate,
             wordsPerMinute: baselineWPM,
@@ -317,7 +315,6 @@ const BaselineCapture = (function () {
         };
 
         isRunning = false;
-        console.log("[BaselineCapture] Baseline Complete:", baselinePayload);
         EventAPI.emitBaselineComplete(baselinePayload);
     }
 
@@ -344,17 +341,17 @@ const BaselineCapture = (function () {
 
         const defaultPayload = {
             baselineWPM: 220,
+            baselineMsPerLine: 2600,
             baselineFixationMs: 240,
             baselineBlinkRate: 15.0,
             wordsPerMinute: 220,
             averageFixationDuration: 240,
             blinkRate: 15.0,
-            durationSeconds: 15.0,
+            durationSeconds: 13.0,
             totalFixations: 12,
             wordsRead: PASSAGE_TOTAL_WORDS
         };
 
-        console.log("[BaselineCapture] Skipping baseline with defaults:", defaultPayload);
         EventAPI.emitBaselineComplete(defaultPayload);
     }
 
@@ -371,3 +368,7 @@ const BaselineCapture = (function () {
     };
 
 })();
+
+if (typeof window !== "undefined") {
+    window.BaselineCapture = BaselineCapture;
+}

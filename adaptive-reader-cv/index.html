@@ -82,16 +82,13 @@
                         <input type="file" id="doc-file-input" accept=".txt,.pdf,.docx,.pptx,.md,.png,.jpg,.jpeg" style="display: none;" onchange="handleDocumentUpload(event)" />
                     </label>
                     <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="loadDemoPassage('hackathon_story')">
-                        📖 3-Phase Demo
+                        📖 3-Phase Demo Passage
                     </button>
                     <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" onclick="loadDemoPassage('default')">
                         ↺ Default Passage
                     </button>
-                    <button class="btn btn-secondary" id="btn-toggle-bionic" style="padding: 6px 12px; font-size: 12px;" onclick="toggleBionicMode()">
-                        ⚡ Bionic Guide
-                    </button>
-                    <button class="btn btn-secondary" id="btn-cycle-tint" style="padding: 6px 12px; font-size: 12px;" onclick="cycleVisualTint()">
-                        🎨 Tint: Off
+                    <button class="btn btn-secondary" id="btn-toggle-guide" style="padding: 6px 12px; font-size: 12px;" onclick="togglePacedGuide()">
+                        ⏸ Pause Guide
                     </button>
                     <button class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;" onclick="simulateDifficulty()">
                         ⚡ Simulate Reading Difficulty
@@ -131,6 +128,26 @@
                 <div class="metric-row">
                     <span class="metric-label">Confidence</span>
                     <span class="metric-value" id="metric-confidence">—</span>
+                </div>
+            </div>
+
+            <div class="sidebar-card">
+                <div class="sidebar-card-title">Paced Guide Engine</div>
+                <div class="metric-row">
+                    <span class="metric-label">Guide Status</span>
+                    <span class="metric-value good" id="guide-status-val">Active (Paced)</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Target Line</span>
+                    <span class="metric-value" id="guide-line-val">Line 0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Pace Rate</span>
+                    <span class="metric-value" id="guide-pace-val">1.00x (2.6s/line)</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Gaze Sync Delta</span>
+                    <span class="metric-value" id="guide-sync-val">In Sync (0.0)</span>
                 </div>
             </div>
 
@@ -190,7 +207,7 @@
             <div class="sidebar-card">
                 <div class="sidebar-card-title">Baseline</div>
                 <div class="metric-row">
-                    <span class="metric-label">Baseline WPM</span>
+                    <span class="metric-label">Baseline Pace</span>
                     <span class="metric-value" id="metric-wpm">—</span>
                 </div>
                 <div class="metric-row">
@@ -393,22 +410,17 @@
 
         let showRawDot = false;
         let readingRuler = null;
-        let confirmedLine = -1;
-        let lineDebounceTimer = null;
+        let rulerStatusChip = null;
         let badgeTimer = null;
         let lastGazeParagraphIndex = 0;
-        let activeGazeWordElement = null;
-        let isBionicModeActive = false;
         let currentParagraphsList = [];
-        let visualTintIndex = 0;
+        let currentStageState = "FLOW";
 
-        const VISUAL_TINTS = [
-            { name: "Off", bg: "#0d0e1a", border: "#2a2d4a" },
-            { name: "Calm Blue", bg: "#0f172a", border: "#38bdf8" },
-            { name: "Warm Amber", bg: "#1c1917", border: "#f59e0b" },
-            { name: "Sage Mint", bg: "#064e3b", border: "#34d399" },
-            { name: "Soft Rose", bg: "#2a1520", border: "#f43f5e" }
-        ];
+        let gazeLineHistory = [];
+        let totalLinesCount = 10;
+        let lastPaceCheckTime = 0;
+        let pauseResumeTimeout = null;
+        let activePrompterWordElement = null;
 
         let adaptationApplied = {
             spacing: false,
@@ -417,24 +429,348 @@
         };
         let adaptCooldownUntil = 0;
 
+        const TeleprompterEngine = {
+            currentLine: 0,
+            baseMsPerLine: 2600,
+            paceModifier: 1.0,
+            isRunning: true,
+            isPaused: true,
+            lastTickTime: Date.now(),
+
+            init() {
+                this.lastTickTime = Date.now();
+                this.isPaused = true;
+                requestAnimationFrame(this.step.bind(this));
+            },
+
+            step() {
+                const now = Date.now();
+                const elapsed = now - this.lastTickTime;
+                this.lastTickTime = now;
+
+                if (this.isRunning && !this.isPaused && totalLinesCount > 0) {
+                    const effectiveMsPerLine = Math.max(900, this.baseMsPerLine * this.paceModifier);
+                    const lineAdvance = elapsed / effectiveMsPerLine;
+                    this.currentLine = Math.min(totalLinesCount - 1, this.currentLine + lineAdvance);
+
+                    const targetLineIndex = Math.floor(this.currentLine);
+                    updateRulerToLine(targetLineIndex);
+                    updatePrompterWordHighlight(this.currentLine);
+                    updatePacedFocusTunnel(targetLineIndex);
+                    updatePrompterTelemetry();
+                }
+
+                requestAnimationFrame(this.step.bind(this));
+            },
+
+            pause(reason) {
+                this.isPaused = true;
+                if (readingRuler) {
+                    readingRuler.classList.add("ruler-paused");
+                }
+                if (rulerStatusChip) {
+                    rulerStatusChip.textContent = reason || "⏸ Waiting";
+                }
+                const statusVal = document.getElementById("guide-status-val");
+                if (statusVal) {
+                    statusVal.textContent = "Paused (Waiting for Gaze)";
+                    statusVal.className = "metric-value warn";
+                }
+            },
+
+            resume() {
+                this.isPaused = false;
+                this.lastTickTime = Date.now();
+                if (readingRuler) {
+                    readingRuler.classList.remove("ruler-paused");
+                }
+                if (rulerStatusChip) {
+                    rulerStatusChip.textContent = (1 / this.paceModifier).toFixed(2) + "x";
+                }
+                const statusVal = document.getElementById("guide-status-val");
+                if (statusVal) {
+                    statusVal.textContent = "Active (Paced)";
+                    statusVal.className = "metric-value good";
+                }
+            },
+
+            rewindToLine(lineIndex, reason) {
+                this.currentLine = Math.max(0, Math.min(totalLinesCount - 1, lineIndex));
+                this.pause(reason || "⏸ Rewind & Focus");
+
+                updateRulerToLine(lineIndex);
+
+                const wordLineMap = buildWordLineMap();
+                const wordsOnLine = wordLineMap.filter(function (entry) {
+                    return entry.lineNumber === lineIndex;
+                });
+
+                let targetWord = null;
+                if (wordsOnLine.length > 0) {
+                    targetWord = wordsOnLine[0].element;
+                } else if (wordLineMap.length > 0) {
+                    targetWord = wordLineMap[Math.min(wordLineMap.length - 1, lineIndex * 8)].element;
+                }
+
+                const allWords = textContainer.querySelectorAll(".reader-word");
+                for (let w = 0; w < allWords.length; w++) {
+                    allWords[w].classList.remove("struggle-rewind-word");
+                }
+
+                if (targetWord) {
+                    targetWord.classList.add("struggle-rewind-word");
+                    setTimeout(function () {
+                        if (targetWord) {
+                            targetWord.classList.remove("struggle-rewind-word");
+                        }
+                    }, 2500);
+                }
+
+                clearTimeout(pauseResumeTimeout);
+                pauseResumeTimeout = setTimeout(function () {
+                    TeleprompterEngine.resume();
+                }, 2400);
+            }
+        };
+
         function createReadingRuler() {
             if (!readingRuler) {
                 readingRuler = document.createElement("div");
                 readingRuler.id = "reading-ruler";
                 readingRuler.style.opacity = "0";
+
+                rulerStatusChip = document.createElement("div");
+                rulerStatusChip.id = "ruler-status-chip";
+                rulerStatusChip.textContent = "1.00x";
+                readingRuler.appendChild(rulerStatusChip);
+
                 readingPanel.appendChild(readingRuler);
             }
         }
 
-        function moveRuler(lineRect) {
-            if (!readingRuler || !lineRect) return;
-            const readingPanelRect = readingPanel.getBoundingClientRect();
-            const topPosition = lineRect.top - readingPanelRect.top + readingPanel.scrollTop - 4;
-            const rulerHeight = Math.max(32, (lineRect.bottom - lineRect.top) + 8);
-            readingRuler.style.top = topPosition + "px";
-            readingRuler.style.height = rulerHeight + "px";
-            readingRuler.style.opacity = "1";
+        function updateRulerToLine(lineIndex) {
+            if (!readingRuler) return;
+            const lineBoxes = DOMMapper.getLineBoundingBoxes ? DOMMapper.getLineBoundingBoxes() : [];
+            let targetBox = lineBoxes[lineIndex];
+
+            if (!targetBox) {
+                const allWords = textContainer.querySelectorAll(".reader-word");
+                const targetWord = allWords[Math.min(allWords.length - 1, lineIndex * 10)];
+                if (targetWord) {
+                    const rect = targetWord.getBoundingClientRect();
+                    targetBox = { lineRect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right } };
+                }
+            }
+
+            if (targetBox && targetBox.lineRect) {
+                const readingPanelRect = readingPanel.getBoundingClientRect();
+                const topPosition = targetBox.lineRect.top - readingPanelRect.top + readingPanel.scrollTop - 4;
+                const rulerHeight = Math.max(34, (targetBox.lineRect.bottom - targetBox.lineRect.top) + 8);
+                readingRuler.style.top = topPosition + "px";
+                readingRuler.style.height = rulerHeight + "px";
+                readingRuler.style.opacity = "1";
+            }
         }
+
+        function buildWordLineMap() {
+            const allWords = Array.from(textContainer.querySelectorAll(".reader-word"));
+            if (allWords.length === 0) return [];
+
+            const wordLineMap = [];
+            let currentTop = null;
+            let currentLineNumber = -1;
+
+            for (let i = 0; i < allWords.length; i++) {
+                const rect = allWords[i].getBoundingClientRect();
+                const wordTop = Math.round(rect.top);
+
+                if (currentTop === null || Math.abs(wordTop - currentTop) > 8) {
+                    currentTop = wordTop;
+                    currentLineNumber++;
+                }
+
+                wordLineMap.push({ element: allWords[i], lineNumber: currentLineNumber });
+            }
+
+            return wordLineMap;
+        }
+
+        function updatePrompterWordHighlight(continuousLine) {
+            const allWords = textContainer.querySelectorAll(".reader-word");
+            if (allWords.length === 0) return;
+
+            const wordLineMap = buildWordLineMap();
+            if (wordLineMap.length === 0) return;
+
+            const targetLine = Math.floor(continuousLine);
+            const lineFraction = continuousLine - targetLine;
+
+            const wordsOnTargetLine = wordLineMap.filter(function (entry) {
+                return entry.lineNumber === targetLine;
+            });
+
+            let targetWord = null;
+
+            if (wordsOnTargetLine.length > 0) {
+                const wordIndexInLine = Math.min(
+                    wordsOnTargetLine.length - 1,
+                    Math.floor(lineFraction * wordsOnTargetLine.length)
+                );
+                targetWord = wordsOnTargetLine[wordIndexInLine].element;
+            } else {
+                const lastOnPrevLine = wordLineMap.filter(function (entry) {
+                    return entry.lineNumber <= targetLine;
+                });
+                if (lastOnPrevLine.length > 0) {
+                    targetWord = lastOnPrevLine[lastOnPrevLine.length - 1].element;
+                }
+            }
+
+            if (activePrompterWordElement && activePrompterWordElement !== targetWord) {
+                activePrompterWordElement.classList.remove("prompter-active-word");
+            }
+
+            if (targetWord) {
+                targetWord.classList.add("prompter-active-word");
+                activePrompterWordElement = targetWord;
+            }
+        }
+
+        function updatePacedFocusTunnel(activeLineIndex) {
+            const lineBoxes = DOMMapper.getLineBoundingBoxes ? DOMMapper.getLineBoundingBoxes() : [];
+            totalLinesCount = Math.max(4, lineBoxes.length);
+
+            const allParas = textContainer.querySelectorAll(".paragraph");
+            if (allParas.length === 0) return;
+
+            let activeParagraphIndex = 0;
+            if (lineBoxes[activeLineIndex] && lineBoxes[activeLineIndex].paragraphIndex !== undefined) {
+                activeParagraphIndex = lineBoxes[activeLineIndex].paragraphIndex;
+            } else {
+                activeParagraphIndex = Math.min(allParas.length - 1, Math.floor((activeLineIndex / totalLinesCount) * allParas.length));
+            }
+
+            for (let p = 0; p < allParas.length; p++) {
+                if (p === activeParagraphIndex) {
+                    allParas[p].classList.add("focus-active");
+                    allParas[p].classList.remove("focus-dimmed");
+                } else {
+                    if (currentStageState === "HIGH_FRICTION" || currentStageState === "ASSIST") {
+                        allParas[p].classList.remove("focus-active");
+                        allParas[p].classList.add("focus-dimmed");
+                    } else {
+                        allParas[p].classList.add("focus-active");
+                        allParas[p].classList.remove("focus-dimmed");
+                    }
+                }
+            }
+        }
+
+        let lineStallStartTime = null;
+        let lastObservedGazeLine = -1;
+
+        function recordGazeLineSample(lineIndex) {
+            if (lineIndex >= 0) {
+                const now = Date.now();
+                gazeLineHistory.push({ line: lineIndex, time: now });
+                while (gazeLineHistory.length > 0 && now - gazeLineHistory[0].time > 3500) {
+                    gazeLineHistory.shift();
+                }
+            }
+        }
+
+        function getAverageGazeLine() {
+            if (gazeLineHistory.length === 0) return TeleprompterEngine.currentLine;
+            let sum = 0;
+            for (let i = 0; i < gazeLineHistory.length; i++) {
+                sum += gazeLineHistory[i].line;
+            }
+            return sum / gazeLineHistory.length;
+        }
+
+        function updatePaceModifierFromGaze() {
+            const now = Date.now();
+            if (now - lastPaceCheckTime < 1000) return;
+            lastPaceCheckTime = now;
+
+            if (gazeLineHistory.length < 4) return;
+
+            const gazeLineAvg = getAverageGazeLine();
+            const prompterLine = TeleprompterEngine.currentLine;
+            const diff = gazeLineAvg - prompterLine;
+
+            const syncEl = document.getElementById("guide-sync-val");
+            if (syncEl) {
+                if (diff > 1.8) {
+                    syncEl.textContent = "Ahead (+" + diff.toFixed(1) + ")";
+                } else if (diff < -1.8) {
+                    syncEl.textContent = "Behind (" + diff.toFixed(1) + ")";
+                } else {
+                    syncEl.textContent = "In Sync (" + (diff >= 0 ? "+" : "") + diff.toFixed(1) + ")";
+                }
+            }
+
+            const currentGazeLineRounded = Math.round(gazeLineAvg);
+            if (currentGazeLineRounded === lastObservedGazeLine) {
+                if (!lineStallStartTime) {
+                    lineStallStartTime = now;
+                } else if (now - lineStallStartTime > 4500) {
+                    applyAdaptation("MILD_FRICTION", "LIGHT_SPACING");
+                }
+            } else {
+                lastObservedGazeLine = currentGazeLineRounded;
+                lineStallStartTime = now;
+            }
+
+            if (diff > 2.0) {
+                TeleprompterEngine.paceModifier = 0.90;
+                if (TeleprompterEngine.isPaused) TeleprompterEngine.resume();
+            } else if (diff >= -1.0) {
+                TeleprompterEngine.paceModifier = 1.00;
+                if (TeleprompterEngine.isPaused) TeleprompterEngine.resume();
+            } else if (diff >= -2.5) {
+                TeleprompterEngine.paceModifier = 1.18;
+                if (TeleprompterEngine.isPaused) TeleprompterEngine.resume();
+            } else {
+                TeleprompterEngine.paceModifier = 1.35;
+            }
+        }
+
+        function updatePrompterTelemetry() {
+            const lineVal = document.getElementById("guide-line-val");
+            const paceVal = document.getElementById("guide-pace-val");
+
+            if (lineVal) {
+                lineVal.textContent = "Line " + Math.floor(TeleprompterEngine.currentLine) + " / " + Math.max(1, totalLinesCount);
+            }
+            if (paceVal) {
+                const secPerLine = ((TeleprompterEngine.baseMsPerLine * TeleprompterEngine.paceModifier) / 1000).toFixed(1);
+                paceVal.textContent = (1 / TeleprompterEngine.paceModifier).toFixed(2) + "x (" + secPerLine + "s/line)";
+            }
+            if (rulerStatusChip && !TeleprompterEngine.isPaused) {
+                rulerStatusChip.textContent = (1 / TeleprompterEngine.paceModifier).toFixed(2) + "x";
+            }
+        }
+
+        function togglePacedGuide() {
+            const btn = document.getElementById("btn-toggle-guide");
+            if (TeleprompterEngine.isRunning && !TeleprompterEngine.isPaused) {
+                TeleprompterEngine.pause("⏸ Manual");
+                if (btn) btn.textContent = "▶ Resume Guide";
+                showAdaptBadge("⏸ Paced Guide Paused", "#f59e0b");
+            } else {
+                TeleprompterEngine.resume();
+                if (btn) btn.textContent = "⏸ Pause Guide";
+                showAdaptBadge("▶ Paced Guide Active", "#10b981");
+            }
+        }
+
+        readingPanel.addEventListener("click", function () {
+            if (TeleprompterEngine.isPaused) {
+                TeleprompterEngine.resume();
+                showAdaptBadge("▶ Resumed Reading Guide", "#10b981");
+            }
+        });
 
         function showAdaptBadge(message, color) {
             const badge = document.getElementById("adapt-badge");
@@ -463,106 +799,8 @@
             }
         }
 
-        function toggleBionicMode() {
-            isBionicModeActive = !isBionicModeActive;
-            const btn = document.getElementById("btn-toggle-bionic");
-            if (btn) {
-                if (isBionicModeActive) {
-                    btn.classList.add("btn-active-toggle");
-                    showAdaptBadge("⚡ Bionic Saccade Guide: Enabled", "#5c6bc0");
-                } else {
-                    btn.classList.remove("btn-active-toggle");
-                    showAdaptBadge("Bionic Saccade Guide: Disabled", "#9fa3c0");
-                }
-            }
-            renderTextToContainer(currentParagraphsList);
-        }
-
-        function cycleVisualTint() {
-            visualTintIndex = (visualTintIndex + 1) % VISUAL_TINTS.length;
-            const currentTint = VISUAL_TINTS[visualTintIndex];
-            const btn = document.getElementById("btn-cycle-tint");
-            if (btn) {
-                btn.textContent = "🎨 Tint: " + currentTint.name;
-            }
-            readingPanel.style.backgroundColor = currentTint.bg;
-            readingPanel.style.borderColor = currentTint.border;
-            showAdaptBadge("🎨 Contrast Tint: " + currentTint.name, "#7986cb");
-        }
-
-        function formatWordText(word) {
-            if (!word) return "";
-            if (!isBionicModeActive) {
-                return escapeHtml(word);
-            }
-            const clean = word.trim();
-            if (clean.length <= 1) {
-                return '<span class="bionic-strong">' + escapeHtml(clean) + '</span>';
-            }
-            const midpoint = Math.ceil(clean.length * 0.45);
-            const boldPart = clean.slice(0, midpoint);
-            const restPart = clean.slice(midpoint);
-            return '<span class="bionic-strong">' + escapeHtml(boldPart) + '</span>' + escapeHtml(restPart);
-        }
-
         function escapeHtml(str) {
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        }
-
-        function updateGazeWordFocus(gazeX, gazeY) {
-            const wordElements = textContainer.querySelectorAll(".reader-word");
-            if (wordElements.length === 0) return;
-
-            let closestWord = null;
-            let minDistance = Infinity;
-
-            for (let i = 0; i < wordElements.length; i++) {
-                const rect = wordElements[i].getBoundingClientRect();
-                const wordCenterX = rect.left + rect.width / 2;
-                const wordCenterY = rect.top + rect.height / 2;
-
-                const distance = Math.sqrt(
-                    Math.pow(wordCenterX - gazeX, 2) +
-                    Math.pow((wordCenterY - gazeY) * 1.6, 2)
-                );
-
-                if (distance < minDistance && distance < 140) {
-                    minDistance = distance;
-                    closestWord = wordElements[i];
-                }
-            }
-
-            if (activeGazeWordElement && activeGazeWordElement !== closestWord) {
-                activeGazeWordElement.classList.remove("gaze-active-word");
-                activeGazeWordElement = null;
-            }
-
-            if (closestWord && closestWord !== activeGazeWordElement) {
-                closestWord.classList.add("gaze-active-word");
-                activeGazeWordElement = closestWord;
-
-                const parentParagraph = closestWord.closest(".paragraph");
-                if (parentParagraph) {
-                    const allParas = textContainer.querySelectorAll(".paragraph");
-                    for (let p = 0; p < allParas.length; p++) {
-                        if (allParas[p] === parentParagraph) {
-                            allParas[p].classList.add("focus-active");
-                            allParas[p].classList.remove("focus-dimmed");
-                        } else {
-                            allParas[p].classList.remove("focus-active");
-                            allParas[p].classList.add("focus-dimmed");
-                        }
-                    }
-
-                    const wordRect = closestWord.getBoundingClientRect();
-                    moveRuler({
-                        top: wordRect.top,
-                        bottom: wordRect.bottom,
-                        left: wordRect.left,
-                        right: wordRect.right
-                    });
-                }
-            }
         }
 
         async function callAIAssist(action) {
@@ -621,7 +859,7 @@
                     .replace(/ocular trajectory/gi, "eye movement path");
                 resultElement.textContent = simplified;
             } else {
-                resultElement.textContent = "Summary: This passage discusses adaptive reading tools designed to reduce cognitive strain and support reading fluency for individuals with dyslexia.";
+                resultElement.textContent = "Summary: This passage explains how adaptive line spacing and visual tools reduce visual crowding, making reading fluid and comfortable.";
             }
         }
 
@@ -639,6 +877,8 @@
 
             const words = targetElement.querySelectorAll(".reader-word");
 
+            targetElement.style.backgroundColor = "rgba(95, 168, 211, 0.16)";
+
             utterance.onboundary = function (event) {
                 if (event.name === "word") {
                     const charIndex = event.charIndex;
@@ -655,12 +895,14 @@
             };
 
             utterance.onend = function () {
+                targetElement.style.backgroundColor = "";
                 for (let i = 0; i < words.length; i++) {
                     words[i].classList.remove("speaking-active-word");
                 }
             };
 
             utterance.onerror = function () {
+                targetElement.style.backgroundColor = "";
                 for (let i = 0; i < words.length; i++) {
                     words[i].classList.remove("speaking-active-word");
                 }
@@ -672,66 +914,82 @@
 
         function applyAdaptation(state, action) {
             const now = Date.now();
-            if (now < adaptCooldownUntil) return;
 
-            if (state === "MILD_FRICTION" && !adaptationApplied.spacing) {
-                adaptationApplied.spacing = true;
-                adaptCooldownUntil = now + 12000;
-
-                textContainer.style.lineHeight = "2.35";
-                textContainer.style.letterSpacing = "0.065em";
-                textContainer.style.wordSpacing = "0.22em";
-                AdaptiveReaderCV.refreshTextRegion();
-
-                textContainer.style.boxShadow = "0 0 0 2px rgba(245, 158, 11, 0.6)";
-                setTimeout(function () {
-                    textContainer.style.boxShadow = "none";
-                }, 800);
-
-                showAdaptBadge("↕ Spacing widened for easier reading", "#f59e0b");
-                appendToLog("ADAPTATION APPLIED: LIGHT_SPACING (line-height 2.35)", "warn");
+            if (state === "FLOW") {
+                currentStageState = "FLOW";
+                return;
             }
 
-            if (state === "HIGH_FRICTION" && !adaptationApplied.font) {
-                adaptationApplied.font = true;
-                adaptCooldownUntil = now + 12000;
+            if (state === "MILD_FRICTION" && now >= adaptCooldownUntil) {
+                currentStageState = "MILD_FRICTION";
+                adaptCooldownUntil = now + 10000;
 
-                textContainer.style.fontSize = "23px";
-                textContainer.style.lineHeight = "2.5";
-                textContainer.style.letterSpacing = "0.08em";
+                textContainer.style.lineHeight = "2.3";
+                textContainer.style.letterSpacing = "0.055em";
+                textContainer.style.wordSpacing = "0.18em";
                 AdaptiveReaderCV.refreshTextRegion();
 
-                textContainer.style.boxShadow = "0 0 0 2px rgba(249, 115, 22, 0.6)";
-                setTimeout(function () {
-                    textContainer.style.boxShadow = "none";
-                }, 800);
-
-                showAdaptBadge("🔍 Text enlarged — reading friction detected", "#f97316");
-                appendToLog("ADAPTATION APPLIED: REDUCE_VISUAL_CROWDING (23px, 2.5 lh)", "warn");
+                showAdaptBadge("↕ Spacing widened — helping you read", "#f59e0b");
+                appendToLog("ADAPTATION APPLIED: LIGHT_SPACING (line-height 2.3)", "warn");
             }
 
-            if (state === "ASSIST" && !adaptationApplied.high) {
-                adaptationApplied.high = true;
-                adaptCooldownUntil = now + 15000;
+            if (state === "HIGH_FRICTION" && now >= adaptCooldownUntil) {
+                currentStageState = "HIGH_FRICTION";
+                adaptCooldownUntil = now + 10000;
 
-                textContainer.style.fontSize = "24px";
-                textContainer.style.lineHeight = "2.6";
-                textContainer.style.letterSpacing = "0.09em";
+                textContainer.style.fontSize = "22px";
+                textContainer.style.lineHeight = "2.4";
+                textContainer.style.letterSpacing = "0.07em";
+
+                if (readingRuler) {
+                    readingRuler.classList.add("ruler-intensified");
+                }
+
                 AdaptiveReaderCV.refreshTextRegion();
 
-                showAdaptBadge("🤖 AI assist available — click below", "#ef4444");
+                showAdaptBadge("🔍 Text enlarged & focus isolation active", "#f97316");
+                appendToLog("ADAPTATION APPLIED: REDUCE_VISUAL_CROWDING (22px, 2.4 lh)", "warn");
+            }
+
+            if (state === "ASSIST" && now >= adaptCooldownUntil) {
+                currentStageState = "ASSIST";
+                adaptCooldownUntil = now + 12000;
+
+                textContainer.style.fontSize = "22px";
+                textContainer.style.lineHeight = "2.4";
+                textContainer.style.letterSpacing = "0.07em";
+                AdaptiveReaderCV.refreshTextRegion();
+
+                showAdaptBadge("🤖 AI assist available", "#ef4444");
                 showAIPanel();
                 appendToLog("ADAPTATION APPLIED: ASSIST — AI panel shown", "warn");
             }
         }
 
         function resetTextAdaptation() {
+            currentStageState = "FLOW";
+            TeleprompterEngine.currentLine = 0;
+            TeleprompterEngine.paceModifier = 1.0;
+            TeleprompterEngine.resume();
+
             textContainer.style.fontSize = "";
             textContainer.style.lineHeight = "";
             textContainer.style.letterSpacing = "";
             textContainer.style.wordSpacing = "";
-            textContainer.style.boxShadow = "none";
-            adaptationApplied = { spacing: false, font: false, high: false };
+            textContainer.style.boxShadow = "";
+
+            if (readingRuler) {
+                readingRuler.classList.remove("ruler-intensified");
+                readingRuler.classList.remove("ruler-paused");
+                readingRuler.style.opacity = "1";
+            }
+
+            const allParas = textContainer.querySelectorAll(".paragraph");
+            for (let p = 0; p < allParas.length; p++) {
+                allParas[p].classList.add("focus-active");
+                allParas[p].classList.remove("focus-dimmed");
+            }
+
             adaptCooldownUntil = 0;
             AdaptiveReaderCV.refreshTextRegion();
             showAdaptBadge("↺ Text formatting reset to normal", "#10b981");
@@ -749,10 +1007,12 @@
 
             setTimeout(function () {
                 applyAdaptation("HIGH_FRICTION", "FOCUS_LINE");
+                TeleprompterEngine.rewindToLine(1, "Struggle Rewind");
             }, 3500);
 
             setTimeout(function () {
                 applyAdaptation("ASSIST", "OFFER_SIMPLIFICATION");
+                TeleprompterEngine.pause("AI Assist Ready");
                 showAIPanel();
                 setTimeout(function () {
                     callAIAssist("simplify");
@@ -812,10 +1072,12 @@
                 statusElement.textContent = "Low accuracy";
             }
 
-            document.getElementById("btn-start-baseline").disabled = false;
             document.getElementById("indicator-gaze").classList.add("active");
+            appendToLog("CALIBRATION COMPLETE — opening baseline passage…", "event");
 
-            appendToLog("CALIBRATION COMPLETE (" + mode + ") — score: " + score, "event");
+            setTimeout(function () {
+                AdaptiveReaderCV.startBaseline();
+            }, 600);
         });
 
         EventAPI.on("onGazeUpdate", function (data) {
@@ -838,25 +1100,18 @@
                 lastGazeParagraphIndex = data.paragraphIndex;
             }
 
-            updateGazeWordFocus(data.x, data.y);
+            if (data.lineIndex !== undefined && data.lineIndex >= 0) {
+                recordGazeLineSample(data.lineIndex);
+                updatePaceModifierFromGaze();
+            }
 
             let aoiText = "Outside text";
             if (data.aoi && data.aoi.type === "line" && data.lineIndex >= 0) {
                 aoiText = "Line " + data.lineIndex + " (P" + data.paragraphIndex + ")";
-
-                if (data.lineIndex !== confirmedLine) {
-                    clearTimeout(lineDebounceTimer);
-                    lineDebounceTimer = setTimeout(function () {
-                        confirmedLine = data.lineIndex;
-                        if (data.aoi && data.aoi.lineRect) {
-                            moveRuler(data.aoi.lineRect);
-                        }
-                    }, 220);
-                } else if (data.aoi && data.aoi.lineRect) {
-                    moveRuler(data.aoi.lineRect);
-                }
+                if (readingRuler) readingRuler.style.opacity = "1";
             } else if (data.aoi && data.aoi.type === "paragraph") {
                 aoiText = "Para " + data.paragraphIndex;
+                if (readingRuler) readingRuler.style.opacity = "1";
             }
 
             document.getElementById("metric-line-info").textContent = aoiText;
@@ -911,6 +1166,7 @@
                 faceIndicator.className = "status-indicator error";
                 gazeCursor.style.display = "none";
                 rawGazeCursor.style.display = "none";
+                TeleprompterEngine.pause("Face away");
             }
 
             if (data.headPose) {
@@ -933,16 +1189,23 @@
         });
 
         EventAPI.on("onBaselineComplete", function (data) {
-            document.getElementById("metric-wpm").textContent = data.baselineWPM + " WPM";
+            const pacePerLineSec = ((data.baselineMsPerLine || 2600) / 1000).toFixed(1);
+            document.getElementById("metric-wpm").textContent = pacePerLineSec + "s / line (" + data.baselineWPM + " WPM)";
             document.getElementById("metric-fixation").textContent = data.baselineFixationMs + " ms";
             document.getElementById("metric-blink-rate").textContent = data.baselineBlinkRate + " / min";
+
+            TeleprompterEngine.baseMsPerLine = data.baselineMsPerLine || 2600;
+            TeleprompterEngine.currentLine = 0;
+            TeleprompterEngine.paceModifier = 1.0;
+            TeleprompterEngine.resume();
+
             appendToLog(
-                "BASELINE DONE — WPM: " + data.baselineWPM +
-                ", Fixation: " + data.baselineFixationMs + "ms" +
-                ", BlinkRate: " + data.baselineBlinkRate + "/min",
+                "BASELINE SET — " + pacePerLineSec + "s per line (" + data.baselineWPM + " WPM). Teleprompter active!",
                 "event"
             );
-            document.getElementById("btn-start-baseline").textContent = "✓ Baseline Done";
+            document.getElementById("btn-start-baseline").textContent = "✓ Baseline Active";
+
+            showAdaptBadge("🎯 Personalized Reading Speed: " + pacePerLineSec + "s/line", "#10b981");
 
             ReadingIntelligence.start();
             appendToLog("READING INTELLIGENCE started", "event");
@@ -1046,11 +1309,7 @@
         });
 
         ReadingIntelligence.on("onRegressionDetected", function (data) {
-            appendToLog(
-                "REGRESSION line " + data.fromLine + " → " + data.toLine +
-                " (total: " + data.totalRegressions + ")",
-                "event"
-            );
+            appendToLog("Eye glance back to line " + data.toLine, "event");
         });
 
         window.runReadingIntelligenceTests = function () {
@@ -1127,7 +1386,7 @@
 
                 for (let w = 0; w < words.length; w++) {
                     const rawWord = words[w];
-                    paragraphHtml += '<span class="reader-word" data-word="' + escapeHtml(rawWord) + '">' + formatWordText(rawWord) + '</span> ';
+                    paragraphHtml += '<span class="reader-word" data-word="' + escapeHtml(rawWord) + '">' + escapeHtml(rawWord) + '</span> ';
                     totalWords++;
                 }
 
@@ -1139,6 +1398,9 @@
             if (statsLabel) {
                 statsLabel.textContent = totalWords + " words | " + paragraphsArray.length + " paragraphs";
             }
+
+            TeleprompterEngine.currentLine = 0;
+            TeleprompterEngine.resume();
 
             AdaptiveReaderCV.refreshTextRegion();
             ReadingIntelligence.setDocumentWordCount(totalWords, paragraphsArray.length * 4);
@@ -1248,12 +1510,13 @@
         window.callTTS = callTTS;
         window.showAIPanel = showAIPanel;
         window.hideAIPanel = hideAIPanel;
-        window.toggleBionicMode = toggleBionicMode;
-        window.cycleVisualTint = cycleVisualTint;
+        window.togglePacedGuide = togglePacedGuide;
 
         async function bootSystem() {
             createReadingRuler();
             loadDemoPassage("default");
+            TeleprompterEngine.init();
+
             loadingStatusText.textContent = "Requesting webcam access…";
             loadingSpinner.style.display = "block";
             loadingErrorActions.style.display = "none";

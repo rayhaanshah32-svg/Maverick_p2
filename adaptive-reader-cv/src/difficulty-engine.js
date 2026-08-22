@@ -19,7 +19,7 @@ const DifficultyEngine = (function () {
     var STATE_HIGH = "HIGH_FRICTION";
     var STATE_ASSIST = "ASSIST";
 
-    var STATE_ESCALATE_PERSIST_MS = 2500;
+    var STATE_ESCALATE_PERSIST_MS = 4500;
     var STATE_RECOVERY_PERSIST_MS = 4000;
 
     var MIN_QUALITY_TO_SCORE = 45;
